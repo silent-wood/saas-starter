@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SaaS Starter · 低保真原型（v0.1）</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #eef0f2; color: #333; }
+#nav { width: 210px; background: #fff; border-right: 1px solid #ddd; position: fixed; top: 0; bottom: 0; overflow-y: auto; padding: 14px 0; z-index: 10; }
+#nav h1 { font-size: 13px; padding: 0 16px 10px; border-bottom: 1px solid #eee; color: #111; }
+#nav h1 small { display: block; font-weight: 400; color: #999; font-size: 11px; margin-top: 2px; }
+#nav button { display: block; width: 100%; text-align: left; padding: 8px 16px; background: none; border: none; font-size: 13px; cursor: pointer; color: #555; }
+#nav button:hover { background: #f5f5f5; }
+#nav button.active { background: #eef2f7; color: #1a56db; font-weight: 600; }
+main { margin-left: 210px; padding: 22px 28px 60px; }
+.intro { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 14px 16px; font-size: 12.5px; color: #555; margin-bottom: 18px; line-height: 1.8; }
+.intro b { color: #111; }
+.screen { display: none; }
+.screen.active { display: block; }
+.screen h2 { font-size: 15px; margin: 6px 0 10px; color: #111; }
+.frame { position: relative; background: #fff; border: 1px solid #c9c9c9; border-radius: 8px; overflow: hidden; margin-bottom: 12px; }
+.chrome { background: #e8eaed; padding: 6px 10px; display: flex; gap: 6px; align-items: center; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: #c3c7cd; }
+.url { flex: 1; background: #fff; border-radius: 4px; font-size: 11px; color: #999; padding: 2px 10px; }
+.app { display: flex; min-height: 540px; }
+.sb { width: 172px; background: #fafafa; border-right: 1px solid #e5e5e5; padding: 10px 0; font-size: 12px; flex-shrink: 0; }
+.sb .logo { padding: 2px 16px 10px; font-weight: 700; font-size: 12.5px; border-bottom: 1px dashed #ddd; margin-bottom: 6px; color: #222; }
+.sb a { display: block; padding: 7px 16px; color: #555; text-decoration: none; }
+.sb a.on { background: #ececec; color: #111; font-weight: 600; border-left: 3px solid #444; }
+.work { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.hd { height: 42px; border-bottom: 1px solid #e5e5e5; display: flex; align-items: center; gap: 10px; padding: 0 14px; font-size: 12px; background: #fff; }
+.hd .crumb { color: #666; }
+.hd .sp { flex: 1; }
+.hd .search { width: 180px; height: 24px; border: 1px solid #d5d5d5; border-radius: 4px; background: #fbfbfb; font-size: 11px; color: #aaa; line-height: 22px; padding: 0 8px; }
+.bell { position: relative; font-size: 14px; }
+.bell i { position: absolute; top: -4px; right: -6px; width: 8px; height: 8px; background: #d64541; border-radius: 50%; font-size: 8px; }
+.ava { width: 24px; height: 24px; border-radius: 50%; background: #d8d8d8; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; color: #666; }
+.ct { padding: 14px; flex: 1; font-size: 12px; }
+.btn { display: inline-block; border: 1px solid #b5b5b5; background: #fff; border-radius: 4px; padding: 4px 12px; font-size: 12px; color: #333; cursor: pointer; }
+.btn.pri { background: #3d3d3d; color: #fff; border-color: #3d3d3d; }
+.btn.dis { opacity: .38; cursor: not-allowed; }
+.btn.sm { padding: 1px 8px; font-size: 11px; }
+.row { display: flex; gap: 10px; align-items: center; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 12px; background: #fff; }
+.tbl th { background: #f2f2f2; text-align: left; padding: 6px 8px; border: 1px solid #e0e0e0; font-weight: 600; }
+.tbl td { padding: 6px 8px; border: 1px solid #ececec; color: #444; }
+.tag { display: inline-block; padding: 1px 8px; border-radius: 9px; font-size: 11px; border: 1px solid #b8b8b8; color: #555; background: #fff; }
+.tag.ok { border-color: #7a9a7a; color: #3f6f3f; background: #f0f7f0; }
+.tag.warn { border-color: #c8a23c; color: #8a6d1a; background: #fdf8ea; }
+.tag.dan { border-color: #c98a8a; color: #9c3a3a; background: #fbf0f0; }
+.bar { height: 7px; background: #ececec; border-radius: 4px; overflow: hidden; margin-top: 6px; }
+.bar i { display: block; height: 100%; background: #8a8a8a; }
+.bar i.full { background: #c0392b; }
+.card { border: 1px solid #ddd; border-radius: 6px; padding: 12px; background: #fff; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.mut { color: #999; font-size: 11px; }
+.modal-wrap { position: absolute; inset: 0; background: rgba(0,0,0,.28); display: flex; align-items: center; justify-content: center; z-index: 5; }
+.modal { background: #fff; border-radius: 6px; width: 370px; box-shadow: 0 10px 34px rgba(0,0,0,.22); }
+.mh { padding: 10px 14px; border-bottom: 1px solid #eee; font-weight: 600; font-size: 13px; }
+.mb { padding: 14px; }
+.mf { padding: 10px 14px; border-top: 1px solid #eee; text-align: right; }
+.field { margin-bottom: 10px; }
+.field label { display: block; font-size: 11px; color: #666; margin-bottom: 4px; }
+.inp { border: 1px solid #ccc; border-radius: 4px; height: 28px; background: #fff; }
+.inp.ta { height: 56px; }
+.inp.fl { width: 100%; }
+.annotation { border: 1px dashed #d9822b; background: #fdf6ec; border-radius: 6px; padding: 10px 14px; font-size: 12px; color: #6d4a00; line-height: 1.9; }
+.annotation b { color: #a05a00; }
+.annotation ol { margin-left: 18px; }
+.center { display: flex; align-items: center; justify-content: center; }
+.pagenum { display: flex; gap: 4px; justify-content: flex-end; margin-top: 8px; }
+.pagenum span { border: 1px solid #ccc; padding: 1px 8px; font-size: 11px; border-radius: 3px; color: #555; }
+.pagenum span.on { background: #3d3d3d; color: #fff; border-color: #3d3d3d; }
+.chat { border: 1px solid #e2e2e2; border-radius: 6px; background: #fcfcfc; padding: 10px; height: 300px; overflow: hidden; }
+.msg { max-width: 78%; border-radius: 8px; padding: 7px 10px; font-size: 12px; margin-bottom: 8px; line-height: 1.7; }
+.msg.u { background: #e8e8e8; margin-left: auto; }
+.msg.a { background: #fff; border: 1px solid #e5e5e5; }
+.quote { display: inline-block; border: 1px solid #b9c6d8; color: #33517a; background: #eef3fa; border-radius: 3px; font-size: 10px; padding: 0 4px; margin: 0 1px; }
+.drop { position: absolute; top: 38px; right: 60px; width: 260px; background: #fff; border: 1px solid #d5d5d5; border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.15); font-size: 12px; z-index: 6; }
+.drop .di { padding: 8px 12px; border-bottom: 1px solid #f0f0f0; }
+.color { display: inline-block; width: 22px; height: 22px; border-radius: 4px; border: 1px solid #bbb; vertical-align: middle; margin-right: 4px; }
+</style>
+</head>
+<body>
+
+<aside id="nav">
+  <h1>SaaS Starter 原型<small>低保真线框 · v0.1 · PM 产物</small></h1>
+  <button class="active" data-t="s1">01 登录 / 注册</button>
+  <button data-t="s2">02 工作台 Dashboard</button>
+  <button data-t="s3">03 资源列表 + 新建</button>
+  <button data-t="s4">04 资源详情 / 附件</button>
+  <button data-t="s5">05 回收站</button>
+  <button data-t="s6">06 成员管理</button>
+  <button data-t="s7">07 AI 助手（RAG）</button>
+  <button data-t="s8">08 订阅 + 模拟支付</button>
+  <button data-t="s9">09 账单中心</button>
+  <button data-t="s10">10 通知中心 / 偏好</button>
+  <button data-t="s11">11 审计日志</button>
+  <button data-t="s12">12 租户 / 个人设置</button>
+</aside>
+
+<main>
+  <div class="intro">
+    <b>阅读说明：</b>本原型为<b>低保真线框</b>（产品经理产物），灰阶占位表达信息结构与交互流；<b>高保真视觉不做单独设计</b>，落地时按 <b>Ant Design 组件库</b> + 线框直接实现。
+    橙色虚线块为每屏的<b>交互 / 状态说明</b>（含空 / 错 / 载 / 无权限四态与 RBAC 按钮级差异）。页面清单与《需求文档》v1.1 §5、《用户手册》v0.2 一一对应。
+  </div>
+
+  <!-- ============ S1 登录 / 注册 ============ -->
+  <section class="screen active" id="s1">
+    <h2>01 登录 / 注册</h2>
+    <div class="frame">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">app.silencewood.cn/login</span></div>
+      <div class="app" style="background:#f6f7f8; min-height:520px;">
+        <div style="flex:1;" class="center">
+          <div style="width:340px;">
+            <div class="card">
+              <div class="row" style="border-bottom:1px solid #eee; padding-bottom:8px; margin-bottom:12px;">
+                <span style="font-weight:700; border-bottom:2px solid #333; padding-bottom:6px;">登录</span>
+                <span style="color:#999;">注册</span>
+              </div>
+              <div class="field"><label>邮箱</label><div class="inp fl" style="color:#333; padding:5px 8px;">you@example.com</div></div>
+              <div class="field"><label>密码</label><div class="inp fl"></div><div class="mut" style="text-align:right; margin-top:4px; color:#c0392b;">邮箱或密码错误</div></div>
+              <button class="btn pri fl" style="width:100%; text-align:center;">登 录</button>
+              <div class="row" style="justify-content:space-between; margin-top:10px;">
+                <span class="mut">忘记密码？</span><span class="mut">使用邮箱验证码登录</span>
+              </div>
+            </div>
+            <p class="mut" style="text-align:center; margin-top:10px;">登录 / 注册即表示同意《隐私政策》</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="annotation"><b>交互 / 状态说明</b>
+      <ol>
+        <li>注册成功 → 发送<b>邮箱验证邮件</b> → 验证通过后<b>自动创建租户</b>并进入工作台（多租户入口）。</li>
+        <li>认证采用 JWT 双令牌；accessToken 过期由前端用 refreshToken <b>无感刷新</b>，用户不感知。</li>
+        <li>错误态：密码错误输入框红框 + 红字提示；加载态：按钮转圈禁点。</li>
+        <li>注册页 Tab 切换同卡片，注册多一个「确认密码」字段。</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ============ S2 工作台 ============ -->
+  <section class="screen" id="s2">
+    <h2>02 工作台 Dashboard</h2>
+    <div class="frame">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">app.silencewood.cn/dashboard</span></div>
+      <div class="app">
+        <div class="sb" data-cur="s2"></div>
+        <div class="work">
+          <div class="hd"><span class="crumb">工作台</span><span class="sp"></span><span class="search">搜索…</span><span class="bell">🔔<i></i></span><span class="ava">李</span></div>
+          <div class="ct">
+            <p style="margin-bottom:10px;"><b>下午好，李顺</b> <span class="mut">｜ 当前工作区：示例团队（Free 版 · 试用期剩余 12 天）</span></p>
+            <div class="grid3" style="margin-bottom:12px;">
+              <div class="card"><span class="mut">席位</span><div style="font-size:16px; margin-top:2px;">2 / 3</div><div class="bar"><i style="width:66%;"></i></div></div>
+              <div class="card"><span class="mut">存储（Free 100MB）</span><div style="font-size:16px; margin-top:2px;">45.2 MB</div><div class="bar"><i style="width:45%;"></i></div></div>
+              <div class="card"><span class="mut">AI 问答（本月 20 次）</span><div style="font-size:16px; margin-top:2px;">12 / 20</div><div class="bar"><i style="width:60%;"></i></div></div>
+            </div>
+            <div class="row" style="margin-bottom:12px;"><button class="btn pri">＋ 新建资源</button><button class="btn">上传文档到知识库</button><button class="btn">邀请成员</button><button class="btn">升级 Pro</button></div>
+            <div class="card">
+              <b>最近资源</b>
+              <table class="tbl" style="margin-top:8px;">
+                <tr><th>名称</th><th>分类</th><th>更新时间</th><th>操作</th></tr>
+                <tr><td>产品需求清单 v3</td><td>文档</td><td>2026-10-25</td><td><a href="javascript:void(0)">查看</a></td></tr>
+                <tr><td>会议纪要 1024</td><td>文档</td><td>2026-10-24</td><td><a href="javascript:void(0)">查看</a></td></tr>
+                <tr><td>宣传图 横版</td><td>图片</td><td>2026-10-22</td><td><a href="javascript:void(0)">查看</a></td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="annotation"><b>交互 / 状态说明</b>
+      <ol>
+        <li>三张<b>用量配额卡</b>与套餐联动（对应需求文档 §5 配额模块）；任一指标 ≥90% 变橙色，100% 变红并显示「升级」按钮。</li>
+        <li>快捷入口按角色显隐：member 不显示「邀请成员 / 升级」。</li>
+        <li>空态：新租户无资源时，表格区显示插画 + 「创建第一个资源」引导。</li>
+        <li>铃铛为通知中心入口（屏 10），红点为未读数。</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ============ S3 资源列表 ============ -->
+  <section class="screen" id="s3">
+    <h2>03 资源列表 + 新建弹窗</h2>
+    <div class="frame">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">app.silencewood.cn/resources</span></div>
+      <div class="app">
+        <div class="sb" data-cur="s3"></div>
+        <div class="work">
+          <div class="hd"><span class="crumb">资源管理</span><span class="sp"></span><span class="search">搜索…</span><span class="bell">🔔<i></i></span><span class="ava">李</span></div>
+          <div class="ct">
+            <div class="row" style="margin-bottom:10px;">
+              <button class="btn pri">＋ 新建资源</button>
+              <span class="inp" style="width:160px; color:#aaa; line-height:24px; padding:0 8px;">按名称搜索…</span>
+              <span class="inp" style="width:110px; color:#aaa; line-height:24px; padding:0 8px;">分类：全部 ▾</span>
+              <span class="mut" style="margin-left:auto;">共 26 条</span>
+            </div>
+            <table class="tbl">
+              <tr><th>名称</th><th>分类</th><th>附件</th><th>创建人</th><th>更新时间</th><th style="width:130px;">操作</th></tr>
+              <tr><td>产品需求清单 v3</td><td>文档</td><td>2</td><td>李顺</td><td>2026-10-25</td><td><a href="javascript:void(0)">编辑</a> ｜ <a href="javascript:void(0)" style="color:#9c3a3a;">删除</a></td></tr>
+              <tr><td>会议纪要 1024</td><td>文档</td><td>0</td><td>王明</td><td>2026-10-24</td><td><a href="javascript:void(0)">编辑</a> ｜ <a href="javascript:void(0)" style="color:#9c3a3a;">删除</a></td></tr>
+              <tr><td>宣传图 横版</td><td>图片</td><td>1</td><td>李顺</td><td>2026-10-22</td><td><a href="javascript:void(0)">编辑</a> ｜ <a href="javascript:void(0)" style="color:#9c3a3a;">删除</a></td></tr>
+              <tr><td>客户反馈汇总</td><td>文档</td><td>0</td><td>王明</td><td>2026-10-20</td><td><a href="javascript:void(0)">编辑</a> ｜ <a href="javascript:void(0)" style="color:#9c3a3a;">删除</a></td></tr>
+            </table>
+            <div class="pagenum"><span class="on">1</span><span>2</span><span>3</span><span>›</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-wrap">
+        <div class="modal">
+          <div class="mh">新建资源</div>
+          <div class="mb">
+            <div class="field"><label>名称（必填）</label><div class="inp fl"></div></div>
+            <div class="field"><label>分类</label><div class="inp fl" style="color:#aaa; line-height:24px; padding:0 8px;">请选择 ▾</div></div>
+            <div class="field"><label>描述</label><div class="inp fl ta"></div></div>
+          </div>
+          <div class="mf"><button class="btn">取消</button> <button class="btn pri">保存</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="annotation"><b>交互 / 状态说明</b>
+      <ol>
+        <li><b>按钮级 RBAC</b>：member 角色不显示「新建资源」按钮，操作列只有「查看」；直接调删除接口也会被后端 <b>403</b> 拦截（权限双端 enforcement）。</li>
+        <li>「删除」= 二次确认弹窗 → 进入<b>回收站</b>（软删除），非物理删除。</li>
+        <li>表单校验：名称必填、分类必选，错误红字；保存成功 toast + 列表局部刷新。</li>
+        <li>列表支持名称搜索 + 分类过滤 + 分页；空态显示引导文案。</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ============ S4 资源详情 ============ -->
+  <section class="screen" id="s4">
+    <h2>04 资源详情 / 附件上传</h2>
+    <div class="frame">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">app.silencewood.cn/resources/xx1</span></div>
+      <div class="app">
+        <div class="sb" data-cur="s3"></div>
+        <div class="work">
+          <div class="hd"><span class="crumb">资源管理 / 产品需求清单 v3</span><span class="sp"></span><span class="bell">🔔<i></i></span><span class="ava">李</span></div>
+          <div class="ct">
+            <div class="card" style="margin-bottom:12px;">
+              <div class="row" style="justify-content:space-between;"><b>产品需求清单 v3</b><span><button class="btn sm">编辑</button> <button class="btn sm" style="color:#9c3a3a;">删除</button></span></div>
+              <p class="mut" style="margin-top:6px;">分类：文档 ｜ 创建人：李顺 ｜ 创建：2026-10-20 ｜ 更新：2026-10-25</p>
+              <p style="margin-top:8px; color:#444;">描述：本季度产品需求汇总，含优先级与排期……</p>
+            </div>
+            <div class="card">
+              <div class="row" style="justify-content:space-between; margin-bottom:8px;"><b>附件（2）</b><button class="btn pri sm">⬆ 上传附件</button></div>
+              <div style="border:1px dashed #bbb; border-radius:6px; padding:14px; text-align:center; color:#999; font-size:12px; margin-bottom:10px;">将文件拖到此处，或点击上传（单文件 ≤ 10MB）</div>
+              <table class="tbl">
+                <tr><th>文件名</th><th>大小</th><th>上传人</th><th>时间</th><th>操作</th></tr>
+                <tr><td>需求清单-终稿.pdf</td><td>2.1 MB</td><td>李顺</td><td>10-25</td><td><a href="javascript:void(0)">下载</a> ｜ <a href="javascript:void(0)" style="color:#9c3a3a;">删除</a></td></tr>
+                <tr><td>排期表.xlsx</td><td>86 KB</td><td>王明</td><td>10-24</td><td><a href="javascript:void(0)">下载</a> ｜ <a href="javascript:void(0)" style="color:#9c3a3a;">删除</a></td></tr>
+              </table>
+              <div style="margin-top:10px;"><span class="mut">排期表-v2.xlsx 上传中 62%</span><div class="bar"><i style="width:62%;"></i></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="annotation"><b>交互 / 状态说明</b>
+      <ol>
+        <li>上传走<b>预签名 URL 直传</b>（浏览器 PUT 到对象存储，文件不流经后端），完成后元数据入库。</li>
+        <li>超 10MB：普通上传直接拒绝；若开启<b>大文件分片上传（可选增强）</b>则切换为切片并发直传，显示总进度条、支持<b>断点续传</b>（刷新后继续传）。</li>
+        <li>只读成员（member）：上传 / 删除按钮禁用置灰。</li>
+        <li>存储配额满：上传入口被拦截，提示「存储已满，清理回收站或升级套餐」。</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ============ S5 回收站 ============ -->
+  <section class="screen" id="s5">
+    <h2>05 回收站（软删除，30 天）</h2>
+    <div class="frame">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">app.silencewood.cn/trash</span></div>
+      <div class="app">
+        <div class="sb" data-cur="s5"></div>
+        <div class="work">
+          <div class="hd"><span class="crumb">回收站</span><span class="sp"></span><span class="bell">🔔<i></i></span><span class="ava">李</span></div>
+          <div class="ct">
+            <div class="card" style="background:#fdf8ea; border-color:#e6d9a8; margin-bottom:10px; color:#6d4a00; font-size:12px;">回收站内容保留 <b>30 天</b>，到期自动彻底删除；仅 owner / admin 可管理。</div>
+            <table class="tbl">
+              <tr><th>名称</th><th>删除人</th><th>删除时间</th><th>剩余天数</th><th>操作</th></tr>
+              <tr><td>旧版方案草稿</td><td>李顺</td><td>2026-10-12</td><td>16 天</td><td><a href="javascript:void(0)">恢复</a> ｜ <a href="javascript:void(0)" style="color:#9c3a3a;">彻底删除</a></td></tr>
+              <tr><td>测试数据-0901</td><td>王明</td><td>2026-10-05</td><td>9 天</td><td><a href="javascript:void(0)">恢复</a> ｜ <a href="javascript:void(0)" style="color:#9c3a3a;">彻底删除</a></td></tr>
+              <tr><td>过期合同扫描件</td><td>李顺</td><td>2026-09-28</td><td>2 天</td><td><a href="javascript:void(0)">恢复</a> ｜ <a href="javascript:void(0)" style="color:#9c3a3a;">彻底删除</a></td></tr>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="annotation"><b>交互 / 状态说明</b>
+      <ol>
+        <li>「恢复」还原到资源列表原位置；「彻底删除」二次确认（红字强调不可恢复）。</li>
+        <li>剩余天数 &lt; 7 天时天数标橙提醒。</li>
+        <li><b>无权限态</b>：member 访问此页显示「无权限访问」占位页。</li>
+        <li>删除的附件随资源一并进入回收站逻辑，恢复时一并还原。</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ============ S6 成员管理 ============ -->
+  <section class="screen" id="s6">
+    <h2>06 成员管理（生命周期 / RBAC）</h2>
+    <div class="frame">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">app.silencewood.cn/members</span></div>
+      <div class="app">
+        <div class="sb" data-cur="s6"></div>
+        <div class="work">
+          <div class="hd"><span class="crumb">成员管理</span><span class="sp"></span><span class="bell">🔔<i></i></span><span class="ava">李</span></div>
+          <div class="ct">
+            <div class="row" style="margin-bottom:10px;"><button class="btn pri">＋ 邀请成员</button><span class="mut">席位 2 / 3（Free 版）</span></div>
+            <table class="tbl">
+              <tr><th>成员</th><th>角色</th><th>状态</th><th>加入时间</th><th style="width:200px;">操作</th></tr>
+              <tr><td>◯ 李顺 · li@example.com</td><td><span class="tag">owner</span></td><td><span class="tag ok">正常</span></td><td>2026-09-01</td><td class="mut">—（不可操作自己）</td></tr>
+              <tr><td>◯ 王明 · wang@example.com</td><td><span class="inp" style="width:86px; color:#444; line-height:22px; padding:0 8px; display:inline-block;">admin ▾</span></td><td><span class="tag ok">正常</span></td><td>2026-09-15</td><td><a href="javascript:void(0)">禁用</a> ｜ <a href="javascript:void(0)" style="color:#9c3a3a;">移除</a> ｜ <a href="javascript:void(0)">转让所有权</a></td></tr>
+              <tr><td>◯ zhang@example.com</td><td><span class="inp" style="width:86px; color:#444; line-height:22px; padding:0 8px; display:inline-block;">member ▾</span></td><td><span class="tag warn">待激活</span></td><td>—</td><td><a href="javascript:void(0)">重发邀请</a> ｜ <a href="javascript:void(0)" style="color:#9c3a3a;">移除</a></td></tr>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="modal-wrap">
+        <div class="modal">
+          <div class="mh">转让所有权</div>
+          <div class="mb" style="font-size:12px; color:#444; line-height:1.8;">
+            确定将「示例团队」的<b>所有权</b>转让给 <b>王明</b>？<br>
+            <span style="color:#9c3a3a;">转让后你将降为 admin，且此操作不可撤销。</span>
+          </div>
+          <div class="mf"><button class="btn">取消</button> <button class="btn pri">确认转让</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="annotation"><b>交互 / 状态说明</b>
+      <ol>
+        <li>邀请流程：填邮箱 + 角色 → 发邀请邮件 → 对方注册 / 登录后处于「<b>待激活</b>」→ 接受后生效；支持重发邀请。</li>
+        <li>生命周期：<b>待激活 → 正常 → 禁用 / 移除</b>；禁用保留数据但禁止登录本租户；移除需二次确认。</li>
+        <li><b>owner 转让</b>：仅 owner 可操作，强二次确认；转让后原 owner 自动降为 admin（防双 owner）。</li>
+        <li>成员行对自己的行只显示「—」；席位满员时「邀请成员」按钮禁用并提示升级。</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ============ S7 AI 助手 ============ -->
+  <section class="screen" id="s7">
+    <h2>07 AI 助手（RAG 问答）</h2>
+    <div class="frame">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">app.silencewood.cn/ai</span></div>
+      <div class="app">
+        <div class="sb" data-cur="s7"></div>
+        <div class="work">
+          <div class="hd"><span class="crumb">AI 助手</span><span class="sp"></span><span class="bell">🔔<i></i></span><span class="ava">李</span></div>
+          <div class="ct" style="display:flex; gap:12px;">
+            <div style="width:200px; flex-shrink:0;">
+              <div class="card">
+                <div class="row" style="justify-content:space-between; margin-bottom:8px;"><b>知识库</b><button class="btn sm pri">⬆ 上传</button></div>
+                <div style="border:1px dashed #bbb; border-radius:6px; padding:10px; text-align:center; color:#999; font-size:11px; margin-bottom:8px;">txt / md / pdf</div>
+                <div style="font-size:12px; border-bottom:1px solid #f0f0f0; padding:6px 0;">需求清单-终稿.pdf<br><span class="tag ok" style="font-size:10px;">已向量化</span></div>
+                <div style="font-size:12px; border-bottom:1px solid #f0f0f0; padding:6px 0;">会议纪要.md<br><span class="tag warn" style="font-size:10px;">处理中…</span></div>
+                <div style="font-size:12px; padding:6px 0;">扫描件.jpg<br><span class="tag dan" style="font-size:10px;">解析失败</span></div>
+              </div>
+            </div>
+            <div style="flex:1;">
+              <div class="chat" style="margin-bottom:10px;">
+                <div class="msg u">这份季度需求里优先级最高的三件事是什么？</div>
+                <div class="msg a">根据文档，优先级最高的三项是：<b>多租户隔离加固</b><span class="quote">[1]</span>、<b>订阅计费上线</b><span class="quote">[2]</span>、<b>AI 问答灰度</b><span class="quote">[1]</span>。其中订阅计费计划于 11 月完成开发……<span class="mut">▍</span></div>
+                <div class="mut" style="text-align:right;">引用来源：<span class="quote">[1] 需求清单-终稿.pdf · P3</span> <span class="quote">[2] 需求清单-终稿.pdf · P7</span></div>
+              </div>
+              <div class="row">
+                <span class="inp fl" style="color:#999; line-height:26px; padding:0 10px;">基于你的知识库提问…</span>
+                <button class="btn pri">发送</button>
+              </div>
+              <p class="mut" style="margin-top:6px;">本月剩余额度：8 / 20 次 ｜ 回答仅基于本租户文档，AI 内容可能不准确，请以引用原文为准。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="annotation"><b>交互 / 状态说明</b>
+      <ol>
+        <li>回答为 <b>SSE 流式</b>打字机效果（▍为光标）；引用编号 <b>[n] 可点击</b>，展开原文片段与页码定位。</li>
+        <li>文档上传后<b>异步处理</b>（队列切分 / 向量化）：处理中不可被检索；失败给出原因与重试。</li>
+        <li>额度用尽：输入框禁用 + 「本月额度已用尽，升级套餐或下月重置」提示（计量口径见需求文档 §5）。</li>
+        <li>安全边界：检索强制限定本租户（tenantId 过滤），跨租户文档不可见。</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ============ S8 订阅 + 模拟支付 ============ -->
+  <section class="screen" id="s8">
+    <h2>08 订阅 + 模拟支付弹窗</h2>
+    <div class="frame">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">app.silencewood.cn/billing/plan</span></div>
+      <div class="app">
+        <div class="sb" data-cur="s8"></div>
+        <div class="work">
+          <div class="hd"><span class="crumb">订阅与账单 / 套餐</span><span class="sp"></span><span class="bell">🔔<i></i></span><span class="ava">李</span></div>
+          <div class="ct">
+            <div class="card" style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+              <div>当前套餐：<b>Free</b> <span class="tag warn">试用期 · 剩余 12 天</span></div>
+              <div><button class="btn">开始 14 天试用 Pro</button> <button class="btn pri">升级 Pro · ¥29/月</button></div>
+            </div>
+            <table class="tbl">
+              <tr><th>权益</th><th>Free · ¥0</th><th>Pro · ¥29/月</th></tr>
+              <tr><td>席位上限</td><td>3</td><td><b>20</b></td></tr>
+              <tr><td>AI 问答（自然月）</td><td>20 次</td><td><b>500 次</b></td></tr>
+              <tr><td>存储配额</td><td>100 MB</td><td><b>5 GB</b></td></tr>
+              <tr><td>审计日志 / 回收站 30 天</td><td>✓</td><td>✓</td></tr>
+              <tr><td>支持渠道</td><td>社区</td><td>邮件优先</td></tr>
+            </table>
+            <p class="mut" style="margin-top:8px;">演示环境使用<b>模拟支付</b>，不产生任何真实扣款；到期未续费进入 3 天宽限期（past_due），期间功能可用。</p>
+          </div>
+        </div>
+      </div>
+      <div class="modal-wrap">
+        <div class="modal">
+          <div class="mh">确认订阅 · 模拟支付</div>
+          <div class="mb">
+            <div class="field"><label>套餐</label><div class="inp fl" style="color:#333; padding:5px 8px;">Pro · 按月 · ¥29.00</div></div>
+            <div class="field"><label>支付方式</label><div class="inp fl" style="color:#333; padding:5px 8px;">模拟支付渠道（演示）</div></div>
+            <p style="font-size:11px; color:#c0392b;">⚠ 演示环境不会真实扣款。支付状态由订阅状态机管理，取消后按期末生效。</p>
+          </div>
+          <div class="mf"><button class="btn">取消</button> <button class="btn pri">确认支付 ¥29.00</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="annotation"><b>交互 / 状态说明</b>
+      <ol>
+        <li>订阅状态机：<b>trialing → active → past_due（3 天宽限）→ canceled / expired</b>；非法跳转（如 canceled→active）被后端拒绝。</li>
+        <li>支持<b>期末取消</b>（到期自然降级）与<b>立即取消</b>；模拟退款走同一网关契约。</li>
+        <li>支付成功 → 订阅即时生效 → 权益（席位 / AI 额度 / 存储）联动更新 → 站内 + 邮件通知。</li>
+        <li>重复点击「确认支付」由<b>幂等键</b>兜底，只入账一次（系统能力，用户无感）。</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ============ S9 账单中心 ============ -->
+  <section class="screen" id="s9">
+    <h2>09 账单中心</h2>
+    <div class="frame">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">app.silencewood.cn/billing/invoices</span></div>
+      <div class="app">
+        <div class="sb" data-cur="s8"></div>
+        <div class="work">
+          <div class="hd"><span class="crumb">订阅与账单 / 账单中心</span><span class="sp"></span><span class="bell">🔔<i></i></span><span class="ava">李</span></div>
+          <div class="ct">
+            <div class="row" style="margin-bottom:10px;"><span class="inp" style="width:130px; color:#aaa; line-height:24px; padding:0 8px;">2026 年 ▾</span><button class="btn sm">导出 CSV</button><span class="mut" style="margin-left:auto;">本年合计：<b>¥116.00</b></span></div>
+            <table class="tbl">
+              <tr><th>账单编号</th><th>日期</th><th>描述</th><th>金额</th><th>状态</th><th>操作</th></tr>
+              <tr><td>INV-20261001</td><td>2026-10-01</td><td>Pro 订阅 · 10 月</td><td>¥29.00</td><td><span class="tag ok">已支付</span></td><td><a href="javascript:void(0)">查看发票</a></td></tr>
+              <tr><td>INV-20260901</td><td>2026-09-01</td><td>Pro 订阅 · 9 月</td><td>¥29.00</td><td><span class="tag ok">已支付</span></td><td><a href="javascript:void(0)">查看发票</a></td></tr>
+              <tr><td>INV-20260820</td><td>2026-08-20</td><td>Pro 订阅 · 8 月（退款）</td><td>-¥29.00</td><td><span class="tag">已退款</span></td><td><a href="javascript:void(0)">查看发票</a></td></tr>
+              <tr><td>INV-20260701</td><td>2026-07-01</td><td>Pro 订阅 · 7 月</td><td>¥29.00</td><td><span class="tag dan">待支付</span></td><td><a href="javascript:void(0)">去支付</a></td></tr>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="annotation"><b>交互 / 状态说明</b>
+      <ol>
+        <li>金额一律<b>以分存储、格式化展示</b>（Decimal，禁浮点）；退款显示负数金额。</li>
+        <li>「待支付」对应 past_due 宽限期，超 3 天转 canceled 并降级 Free。</li>
+        <li>「查看发票」打开模拟发票页（含抬头 / 明细 / 金额）。</li>
+        <li>系统能力（用户无感，演示可口述）：日终<b>对账</b>比对模拟渠道流水与账单，差异进差异表；<b>资损告警</b>监控重复入账 / 负金额 / 状态回跳。</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ============ S10 通知中心 / 偏好 ============ -->
+  <section class="screen" id="s10">
+    <h2>10 通知中心 + 通知偏好</h2>
+    <div class="frame">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">app.silencewood.cn/settings/notifications</span></div>
+      <div class="app">
+        <div class="sb" data-cur="s12"></div>
+        <div class="work">
+          <div class="hd"><span class="crumb">设置 / 通知偏好</span><span class="sp"></span><span class="search">搜索…</span><span class="bell">🔔<i></i></span><span class="ava">李</span></div>
+          <div class="ct" style="display:flex; gap:12px;">
+            <div style="width:240px; flex-shrink:0;">
+              <div class="card"><b>通知偏好</b>
+                <div class="row" style="justify-content:space-between; margin-top:10px;">站内通知（订阅 / 邀请 / 公告）<b>开</b></div>
+                <div class="row" style="justify-content:space-between; margin-top:8px;">邮件通知<b>开</b></div>
+                <div class="row" style="justify-content:space-between; margin-top:8px;">营销 / 产品动态邮件<b>关</b></div>
+                <div class="row" style="justify-content:space-between; margin-top:8px;">安全告警（登录异常 / 权限变更）<b style="color:#999;">开（不可关）</b></div>
+                <p class="mut" style="margin-top:8px;">安全告警按合规要求不可关闭。</p>
+              </div>
+            </div>
+            <div style="flex:1;">
+              <div class="card"><b>最近通知</b><a href="javascript:void(0)" style="float:right; font-size:11px;">全部已读</a>
+                <div style="border-bottom:1px solid #f0f0f0; padding:8px 0; font-size:12px;"><b>订阅成功</b><br><span class="mut">Pro 订阅已生效，权益已更新 · 10 分钟前</span></div>
+                <div style="border-bottom:1px solid #f0f0f0; padding:8px 0; font-size:12px;"><b>新成员待激活</b><br><span class="mut">zhang@example.com 已接受邀请，等待你确认 · 2 小时前</span></div>
+                <div style="padding:8px 0; font-size:12px;"><b>系统公告</b><br><span class="mut">AI 问答额度本月已重置 · 3 天前</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="annotation"><b>交互 / 状态说明</b>
+      <ol>
+        <li>站内通知经 <b>SSE 实时推送</b>（v1 降级方案，轮询兜底）；离线事件转邮件送达。</li>
+        <li>偏好开关即时生效；<b>安全告警不可关闭</b>（合规红线，见需求文档 §5 通知偏好）。</li>
+        <li>铃铛未读数 &gt; 99 显示「99+」；点击单条跳转对应页面并标记已读。</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ============ S11 审计日志 ============ -->
+  <section class="screen" id="s11">
+    <h2>11 审计日志（仅 owner / admin）</h2>
+    <div class="frame">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">app.silencewood.cn/audit</span></div>
+      <div class="app">
+        <div class="sb" data-cur="s11"></div>
+        <div class="work">
+          <div class="hd"><span class="crumb">审计日志</span><span class="sp"></span><span class="bell">🔔<i></i></span><span class="ava">李</span></div>
+          <div class="ct">
+            <div class="row" style="margin-bottom:10px;">
+              <span class="inp" style="width:150px; color:#aaa; line-height:24px; padding:0 8px;">时间范围 ▾</span>
+              <span class="inp" style="width:120px; color:#aaa; line-height:24px; padding:0 8px;">操作人 ▾</span>
+              <span class="inp" style="width:130px; color:#aaa; line-height:24px; padding:0 8px;">动作类型 ▾</span>
+              <button class="btn sm" style="margin-left:auto;">导出</button>
+            </div>
+            <table class="tbl">
+              <tr><th>时间</th><th>操作人</th><th>动作</th><th>对象</th><th>IP</th><th>结果</th></tr>
+              <tr><td>10-25 21:04</td><td>李顺</td><td>owner 转让发起</td><td>成员 · 王明</td><td>112.64.x.x</td><td><span class="tag ok">成功</span></td></tr>
+              <tr><td>10-25 20:41</td><td>王明</td><td>删除资源</td><td>旧版方案草稿</td><td>223.104.x.x</td><td><span class="tag ok">成功（进回收站）</span></td></tr>
+              <tr><td>10-25 20:02</td><td>王明</td><td>删除资源</td><td>客户合同（受限）</td><td>223.104.x.x</td><td><span class="tag dan">拒绝 · 403</span></td></tr>
+              <tr><td>10-25 09:12</td><td>zhang@…</td><td>登录</td><td>—</td><td>101.87.x.x</td><td><span class="tag warn">待激活账号</span></td></tr>
+            </table>
+            <p class="mut" style="margin-top:8px;">日志保留 180 天；记录登录、权限 / 成员变更、数据删除、订阅变更、配额调整。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="annotation"><b>交互 / 状态说明</b>
+      <ol>
+        <li>入口仅对 <b>owner / admin</b> 显示；member 访问显示无权限页（接口同样 403）。</li>
+        <li>筛选支持时间范围 / 操作人 / 动作类型；结果含被拒绝的越权尝试（安全可追溯）。</li>
+        <li>导出 CSV 供线下审查；日志只追加、不可编辑删除。</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ============ S12 设置 ============ -->
+  <section class="screen" id="s12">
+    <h2>12 租户设置 + 个人中心</h2>
+    <div class="frame">
+      <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">app.silencewood.cn/settings</span></div>
+      <div class="app">
+        <div class="sb" data-cur="s12"></div>
+        <div class="work">
+          <div class="hd"><span class="crumb">设置</span><span class="sp"></span><span class="bell">🔔<i></i></span><span class="ava">李</span></div>
+          <div class="ct" style="display:flex; gap:12px;">
+            <div style="flex:1;">
+              <div class="card"><b>租户设置</b><span class="mut">（仅 owner / admin）</span>
+                <div class="field" style="margin-top:10px;"><label>租户名称</label><div class="inp fl" style="color:#333; padding:5px 8px;">示例团队</div></div>
+                <div class="field"><label>Logo</label><div style="border:1px dashed #bbb; border-radius:6px; padding:10px; text-align:center; color:#999; font-size:11px;">点击上传（建议 128×128 PNG）</div></div>
+                <div class="field"><label>品牌主色</label><span class="color" style="background:#3d3d3d;"></span><span class="color" style="background:#1a56db;"></span><span class="color" style="background:#2f7d4f;"></span><span class="color" style="background:#c0392b;"></span><span class="mut">当前：#3D3D3D</span></div>
+                <button class="btn pri sm">保存设置</button>
+              </div>
+            </div>
+            <div style="flex:1;">
+              <div class="card"><b>个人中心</b>
+                <div class="field" style="margin-top:10px;"><label>头像 / 姓名</label><div class="row"><span class="ava" style="width:36px; height:36px;">李</span><div class="inp" style="width:150px; color:#333; padding:5px 8px;">李顺</div></div></div>
+                <div class="field"><label>邮箱</label><div class="inp fl" style="color:#333; padding:5px 8px;">li@example.com（已验证）</div></div>
+                <div class="field"><label>安全</label><button class="btn sm">修改密码</button> <button class="btn sm">登出全部设备</button></div>
+                <div class="field"><label>当前工作区</label><div class="inp fl" style="color:#333; padding:5px 8px;">示例团队（切换 ▾）</div><p class="mut" style="margin-top:4px;">切换后全站数据按新租户隔离展示。</p></div>
+                <button class="btn sm" style="color:#9c3a3a;">退出登录</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="annotation"><b>交互 / 状态说明</b>
+      <ol>
+        <li>租户设置仅 owner / admin 可编辑；品牌主色即时预览（演示主题化能力）。</li>
+        <li>「修改密码」需输入原密码；成功后<b>其他会话失效</b>（配合登出全部设备）。</li>
+        <li>「切换租户」用于一人多租户场景，切换即重载全部租户隔离数据。</li>
+      </ol>
+    </div>
+  </section>
+</main>
+
+<script>
+// 侧边导航（应用内布局复用）
+var NAV = [["s2","工作台"],["s3","资源管理"],["s5","回收站"],["s6","成员管理"],["s7","AI 助手"],["s8","订阅与账单"],["s11","审计日志"],["s12","设置"]];
+document.querySelectorAll(".sb").forEach(function(sb){
+  var cur = sb.dataset.cur || "";
+  sb.innerHTML = '<div class="logo">▣ SaaS Starter</div>' + NAV.map(function(n){
+    return '<a class="' + (n[0] === cur ? "on" : "") + '" href="javascript:void(0)">' + n[1] + "</a>";
+  }).join("");
+});
+// 原型页切换
+var btns = document.querySelectorAll("#nav button");
+btns.forEach(function(b){
+  b.onclick = function(){
+    btns.forEach(function(x){ x.classList.remove("active"); });
+    b.classList.add("active");
+    document.querySelectorAll(".screen").forEach(function(s){ s.classList.remove("active"); });
+    document.getElementById(b.dataset.t).classList.add("active");
+    window.scrollTo(0, 0);
+  };
+});
+</script>
+</body>
+</html>
