@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.turbo/
+coverage/
+*.local
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# 工作日志（本地过程记录，不入库）
+.workbuddy/
+
+# Prisma 7 生成物不入库（apps/api）
+src/generated/prisma/
+*.tsbuildinfo
+apps/api/dist/
