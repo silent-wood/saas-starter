@@ -11,7 +11,7 @@
 - **认证与 RBAC**：JWT 双令牌、bcrypt 哈希、owner / admin / member 三级角色、按钮级权限
 - **成员生命周期**：待激活 / 禁用 / 移除 / owner 转让，全程留痕
 - **业务域 CRUD**：示例「工作区资源」实体，分页 / 过滤 / **软删除回收站（30 天可恢复）**
-- **文件存储**：S3 兼容对象存储（Cloudflare R2），元数据入库
+- **文件存储**：S3 兼容对象存储（腾讯云 COS），元数据入库
 - **AI 智能问答（RAG）**：文档上传 → 切分向量化（pgvector）→ 语义检索 → LLM 流式回答（SSE），带引用来源
 - **订阅支付（模拟网关 · 内容完整版）**：套餐 / 14 天试用 / 订阅状态机（宽限期/取消/退款）/**资金安全三件套（幂等 + 对账 + 资损监控，模拟执行）** / 账单中心 / 权益联动；MockPaymentGateway 策略模式预留真实网关接入位
 - **用量与配额**：席位 / 存储 / AI 次数看板与超额策略
@@ -27,7 +27,7 @@
 | 前端 | Vite · React 19 · Ant Design 5 · Zustand · TanStack Query · React Hook Form + Zod |
 | 后端 | Node 20 LTS · NestJS 11 · Prisma 6 · PostgreSQL（Neon）+ pgvector |
 | 异步 / 缓存 | BullMQ + Upstash Redis |
-| 存储 / 邮件 / AI | Cloudflare R2 · nodemailer/Resend · Vercel AI SDK |
+| 存储 / 邮件 / AI | 腾讯云 COS · nodemailer/Resend · Vercel AI SDK |
 | 工程 | pnpm workspace + Turborepo（Monorepo）· GitHub Actions · Vitest + Supertest |
 
 完整选型与版本见 `_docs/需求文档.md` 第 3 章（构建前以官方最新稳定版复核）。实时推送（SSE）由 NestJS 原生响应流实现，无额外依赖；WebSocket（v2）届时引入 Socket.IO。
