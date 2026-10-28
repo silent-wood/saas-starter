@@ -15,3 +15,6 @@ coverage/
 src/generated/prisma/
 *.tsbuildinfo
 apps/api/dist/
+
+# Vitest 报告与构建产物
+.vitest/

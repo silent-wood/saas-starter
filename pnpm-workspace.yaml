@@ -1,0 +1,12 @@
+packages:
+  - "packages/*"
+  - "apps/*"
+
+allowBuilds:
+  esbuild: true
+  prisma: true
+
+engine:
+  "@prisma/client": true
+  "@swc/core": true
+  "@node-rs/bcrypt": true

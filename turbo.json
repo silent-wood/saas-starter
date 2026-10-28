@@ -1,0 +1,29 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "tasks": {
+    "dev": {
+      "cache": false, // 是否缓存任务结果。对于 dev 这种长期运行或频繁变动的任务，通常设为 false
+      "persistent": true // 标记任务为长期运行（如开发服务器）
+      // "env": ["NODE_ENV"] // 指定任务运行时需要的环境变量
+    },
+    "build": {
+      "dependsOn": ["^build"], // 控制任务执行顺序 ^build"：先运行所有依赖包的 build 任务, build: 先运行当前包的 build 任务.  utils#build"：先运行特定包（utils）的 build 任务
+      "outputs": ["dist/**"]
+    },
+    "typecheck": {},
+    "preview": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "clean": {
+      "cache": false
+    }
+  }
+}
