@@ -5,6 +5,8 @@ packages:
 allowBuilds:
   esbuild: true
   prisma: true
+  # simple-git-hooks 的 postinstall 会在 pnpm install 后自动重新激活 git hooks
+  simple-git-hooks: true
 
 engine:
   "@prisma/client": true

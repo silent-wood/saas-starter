@@ -13,9 +13,30 @@
     "preview": "turbo run preview",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test"
+    "test": "turbo run test",
+    "prepare": "simple-git-hooks"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "pnpm exec lint-staged",
+    "commit-msg": "pnpm exec commitlint --edit $1"
+  },
+  "lint-staged": {
+    "apps/web/**/*.{ts,tsx}": [
+      "pnpm --filter web exec eslint --fix",
+      "pnpm --filter web exec prettier --write"
+    ],
+    "packages/shared/**/*.ts": [
+      "pnpm --filter web exec prettier --write"
+    ],
+    "**/*.{css,less,json}": [
+      "pnpm --filter web exec prettier --write"
+    ]
   },
   "devDependencies": {
+    "@commitlint/cli": "21.2.4",
+    "@commitlint/config-conventional": "21.2.4",
+    "lint-staged": "17.6.0",
+    "simple-git-hooks": "2.14.0",
     "turbo": "^2.11.10"
   }
 }

@@ -1,0 +1,38 @@
+# CI 门禁：PR / 推送到 main、dev 时全量校验
+# 作用：本地 hook 可被 --no-verify 跳过，这里是"不过不让合"的最终关卡
+# 对应规范：_docs/前端开发规范.md §2（提交前必须通过 typecheck/lint/test）与 §14
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+# 同一分支的新推送取消旧运行，节省 CI 时长
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # 1. 拉取代码（浅克隆加速；turbo 缓存可用时再考虑 fetch-depth: 0）
+      - uses: actions/checkout@v4
+
+      # 2. 安装 pnpm（版本读根 package.json 的 packageManager 字段，即 11.15.0）
+      - uses: pnpm/action-setup@v4
+
+      # 3. 安装 Node 并启用 pnpm 缓存（按 pnpm-lock.yaml 哈希命中）
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # 4. 严格按 lockfile 安装（lockfile 与 package.json 不一致时直接失败，防止 CI 与本地环境漂移）
+      - run: pnpm install --frozen-lockfile
+
+      # 5. 全量门禁：类型检查 / lint / 单测 / 生产构建
+      #    turbo 会按依赖拓扑编排（shared 先于 web），并缓存未变更包的任务结果
+      - run: pnpm turbo run typecheck lint test build
