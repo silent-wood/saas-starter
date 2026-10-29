@@ -1,0 +1,10 @@
+node_modules/
+**/dist/
+coverage/
+**/coverage/
+.turbo/
+**/.turbo/
+
+# 环境变量文件：prettier 没有对应的 parser，格式化时会直接报错
+.env
+.env.*
