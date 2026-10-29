@@ -1,6 +1,7 @@
 import { Button, Form, Input } from "antd";
 import { Navigate, useNavigate } from "react-router";
 import { TOKEN_KEY } from "@/app/guards/RequireAuth";
+import { COPY } from "@/constants/copy";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -19,16 +20,16 @@ export default function Login() {
 
   return (
     <div style={{ maxWidth: 320, margin: "80px auto" }}>
-      <h1 style={{ marginBottom: 16 }}>登录</h1>
+      <h1 style={{ marginBottom: 16 }}>{COPY.auth.loginTitle}</h1>
       <Form onFinish={onFinish} layout="vertical">
-        <Form.Item name="email" label="邮箱">
+        <Form.Item name="email" label={COPY.auth.email}>
           <Input placeholder="you@example.com" />
         </Form.Item>
-        <Form.Item name="password" label="密码">
+        <Form.Item name="password" label={COPY.auth.password}>
           <Input.Password placeholder="password" />
         </Form.Item>
         <Button type="primary" htmlType="submit" block>
-          登录
+          {COPY.auth.loginAction}
         </Button>
       </Form>
     </div>
