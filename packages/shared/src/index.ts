@@ -1,9 +1,10 @@
-import { z } from "zod";
+import { z } from 'zod';
 
+export { ERROR_CODES } from './errors.js';
 export const ROLE = {
-  owner: "owner",
-  admin: "admin",
-  member: "member",
+  owner: 'owner',
+  admin: 'admin',
+  member: 'member',
 } as const;
 
 export type Role = (typeof ROLE)[keyof typeof ROLE];
@@ -25,7 +26,7 @@ export interface ApiSuccess<T> {
 export interface ApiFailure {
   success: false;
   error: {
-    code: number;
+    code: string;
     message: string;
     details?: unknown;
   };
