@@ -4,7 +4,13 @@ coverage/
 **/coverage/
 .turbo/
 **/.turbo/
+.workbuddy/
 
 # 环境变量文件：prettier 没有对应的 parser，格式化时会直接报错
 .env
 .env.*
+
+# shared 包源码目录下的 tsc 编译产物（已被 .gitignore 拦截，但 prettier 不读 gitignore）
+packages/shared/src/*.js
+packages/shared/src/*.d.ts
+packages/shared/src/*.js.map

@@ -1,19 +1,19 @@
-import { defineConfig } from "vitest/config";
-import react from "@vitejs/plugin-react";
-import path from "path";
-import tailwindcss from "@tailwindcss/vite";
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+import path from 'path';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "src"),
+      '@': path.resolve(__dirname, 'src'),
     },
   },
   css: {
     preprocessorOptions: {
       less: {
-        additionalData: `@import ${path.resolve(__dirname, "src/styles/variables.less")};`,
+        additionalData: `@import ${path.resolve(__dirname, 'src/styles/variables.less')};`,
       },
     },
   },
@@ -22,15 +22,15 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          react: ["react", "react-dom", "react-router"],
-          antd: ["antd", "@ant-design/icons", "@ant-design/pro-components"],
+          react: ['react', 'react-dom', 'react-router'],
+          antd: ['antd', '@ant-design/icons', '@ant-design/pro-components'],
         },
       },
     },
   },
   test: {
-    environment: "jsdom",
+    environment: 'jsdom',
     globals: true,
-    setupFiles: ["./src/test-setup.ts"],
+    setupFiles: ['./src/test-setup.ts'],
   },
 });

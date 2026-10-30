@@ -1,7 +1,7 @@
-import { Button, Form, Input } from "antd";
-import { Navigate, useNavigate } from "react-router";
-import { TOKEN_KEY } from "@/app/guards/RequireAuth";
-import { COPY } from "@/constants/copy";
+import { Button, Form, Input } from 'antd';
+import { Navigate, useNavigate } from 'react-router';
+import { TOKEN_KEY } from '@/app/guards/RequireAuth';
+import { COPY } from '@/constants/copy';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -15,11 +15,11 @@ export default function Login() {
   const onFinish = () => {
     // 仅做 localStorage 模拟：写入一个假 token，不做任何校验
     localStorage.setItem(TOKEN_KEY, `mock-token-${Date.now()}`);
-    navigate("/app", { replace: true });
+    navigate('/app', { replace: true });
   };
 
   return (
-    <div style={{ maxWidth: 320, margin: "80px auto" }}>
+    <div style={{ maxWidth: 320, margin: '80px auto' }}>
       <h1 style={{ marginBottom: 16 }}>{COPY.auth.loginTitle}</h1>
       <Form onFinish={onFinish} layout="vertical">
         <Form.Item name="email" label={COPY.auth.email}>

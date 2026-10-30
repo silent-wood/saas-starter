@@ -7,21 +7,21 @@
  */
 export const COPY = {
   common: {
-    appName: "SaaS Starter",
-    retry: "重试",
-    backHome: "返回首页",
-    logout: "退出登录",
-    networkError: "网络不稳定，请稍后重试",
+    appName: 'SaaS Starter',
+    retry: '重试',
+    backHome: '返回首页',
+    logout: '退出登录',
+    networkError: '网络不稳定，请稍后重试',
   },
   auth: {
-    loginTitle: "登录",
-    email: "邮箱",
-    password: "密码",
-    loginAction: "登录",
-    loginExpired: "登录已过期，请重新登录",
+    loginTitle: '登录',
+    email: '邮箱',
+    password: '密码',
+    loginAction: '登录',
+    loginExpired: '登录已过期，请重新登录',
   },
   error: {
-    pageCrashTitle: "页面出错了",
-    pageCrashDesc: "渲染过程中发生异常，可重试或返回首页",
+    pageCrashTitle: '页面出错了',
+    pageCrashDesc: '渲染过程中发生异常，可重试或返回首页',
   },
 } as const;

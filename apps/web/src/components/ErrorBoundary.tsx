@@ -6,10 +6,10 @@
  *
  * 注意：React 19 下 class 组件仅允许用于 ErrorBoundary（规范 §6）。
  */
-import { Component, type ErrorInfo, type ReactNode } from "react";
-import { Result, Button } from "antd";
-import { track } from "@/utils/track";
-import { COPY } from "@/constants/copy";
+import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { Result, Button } from 'antd';
+import { track } from '@/utils/track';
+import { COPY } from '@/constants/copy';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -30,7 +30,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     // 上报到监控通道（当前为空实现，接入 Sentry 后自动生效）
-    track("error_boundary_catch", {
+    track('error_boundary_catch', {
       scene: this.props.scene,
       message: error.message,
       componentStack: info.componentStack?.slice(0, 500),
@@ -48,7 +48,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             <Button key="retry" type="primary" onClick={() => this.setState({ error: null })}>
               {COPY.common.retry}
             </Button>,
-            <Button key="home" onClick={() => window.location.assign("/app")}>
+            <Button key="home" onClick={() => window.location.assign('/app')}>
               {COPY.common.backHome}
             </Button>,
           ]}
