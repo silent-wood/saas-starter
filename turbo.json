@@ -10,7 +10,9 @@
       "dependsOn": ["^build"], // 控制任务执行顺序 ^build"：先运行所有依赖包的 build 任务, build: 先运行当前包的 build 任务.  utils#build"：先运行特定包（utils）的 build 任务
       "outputs": ["dist/**"]
     },
-    "typecheck": {},
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
     "preview": {
       "cache": false,
       "persistent": true

@@ -18,3 +18,7 @@ apps/api/dist/
 
 # Vitest 报告与构建产物
 .vitest/
+
+packages/shared/src/*.js
+packages/shared/src/*.d.ts
+packages/shared/src/*.js.map
