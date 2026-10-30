@@ -1,5 +1,5 @@
 {
-  "name": "web",
+  "name": "@saas/web",
   "version": "1.0.0",
   "description": "",
   "private": true,
@@ -55,7 +55,7 @@
     "prettier": "^3.9.10",
     "typescript": "6.0.3",
     "typescript-eslint": "^8.72.0",
-    "vite": "7.3.7",
+    "vite": "8.3.5",
     "vitest": "^5.0.5"
   }
 }
