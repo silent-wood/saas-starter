@@ -23,17 +23,17 @@
   "lint-staged": {
     "apps/web/**/*.{ts,tsx}": [
       "pnpm --filter @saas/web exec eslint --fix",
-      "pnpm --filter @saas/web exec prettier --write"
+      "pnpm --filter @saas/web exec prettier --write --ignore-path ../../.prettierignore"
     ],
     "apps/api/**/*.{ts,tsx}": [
       "pnpm --filter @saas/api exec eslint --fix",
-      "pnpm --filter @saas/api exec prettier --write"
+      "pnpm --filter @saas/api exec prettier --write --ignore-path ../../.prettierignore"
     ],
     "packages/shared/**/*.ts": [
-      "pnpm --filter @saas/web exec prettier --write"
+      "pnpm --filter @saas/web exec prettier --write --ignore-path ../../.prettierignore"
     ],
     "**/*.{css,less,json}": [
-      "pnpm --filter @saas/web exec prettier --write"
+      "pnpm --filter @saas/web exec prettier --write --ignore-path ../../.prettierignore"
     ]
   },
   "devDependencies": {
