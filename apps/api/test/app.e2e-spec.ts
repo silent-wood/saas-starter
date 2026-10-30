@@ -3,8 +3,9 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { AppModule } from './../src/app.module.js';
+import { setupApp } from './../src/setup-app.js';
 
-describe('HealthController (e2e)', () => {
+describe('全局装配 (e2e)', () => {
   let app: INestApplication<App>;
 
   beforeEach(async () => {
@@ -12,20 +13,37 @@ describe('HealthController (e2e)', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
+    // 与 main.ts 走同一套装配，保证 e2e 测到的就是线上形态
+    app = setupApp(moduleFixture.createNestApplication());
     await app.init();
   });
 
-  it('/health (GET) 应返回 200 与 status=ok', () => {
+  it('GET /api/v1/health 应返回 200 与统一响应包装', () => {
     return request(app.getHttpServer())
-      .get('/health')
+      .get('/api/v1/health')
       .expect(200)
       .expect(({ body }) => {
         expect(body).toMatchObject({
-          status: 'ok',
+          success: true,
+          data: { status: 'ok' },
+          message: 'OK',
         });
-        expect(typeof body.uptime).toBe('number');
-        expect(typeof body.timestamp).toBe('string');
+        expect(typeof body.data.uptime).toBe('number');
+        expect(typeof body.data.timestamp).toBe('string');
+        expect(typeof body.timestamp).toBe('number');
+      });
+  });
+
+  it('未定义的路由应返回 404 与统一错误体（错误码为字符串）', () => {
+    return request(app.getHttpServer())
+      .get('/api/v1/not-exist')
+      .expect(404)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({
+          success: false,
+          error: { code: 'NOT_FOUND' },
+        });
+        expect(typeof body.error.message).toBe('string');
       });
   });
 
