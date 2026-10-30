@@ -4,8 +4,8 @@
 
 多租户中后台 SaaS 全栈脚手架（技术作品集 + 真实业务落地基座）。pnpm workspace + Turborepo monorepo。
 
-- `apps/web` — 前端 SPA：Vite 7 · React 19 · Ant Design 6 · Zustand · TanStack Query · Tailwind 4（包名 `web`）
-- `apps/api` — 后端：NestJS 12 · zod（包名 `api`）
+- `apps/web` — 前端 SPA：Vite 8 · React 19 · Ant Design 6 · Zustand · TanStack Query · Tailwind 4（包名 `@saas/web`）
+- `apps/api` — 后端：NestJS 12 · zod（包名 `@saas/api`）
 - `packages/shared` — 前后端共享类型 / zod schema（包名 `@saas/shared`）
 - `_docs/` — 需求、设计、规范文档（PM 视角产出）
 - 里程碑路线图见根 `README.md`（当前处于 M1 阶段，按里程碑推进）
@@ -15,8 +15,9 @@
 包管理器只用 pnpm（Node ≥ 20.19），禁止 npm / yarn。
 
 - 全仓任务：`pnpm turbo run dev | build | lint | typecheck | test`
-- 单包操作：`pnpm --filter <name> <script>`（`<name>` 取各包 `package.json` 的 `name` 字段，不是目录名），如 `pnpm --filter web dev`；装依赖同样加 filter：`pnpm --filter <name> add <pkg>`
+- 单包操作：`pnpm --filter <name> <script>`（`<name>` 取各包 `package.json` 的 `name` 字段，不是目录名），如 `pnpm --filter @saas/web dev`；装依赖同样加 filter：`pnpm --filter <name> add <pkg>`
 - 类型检查是 `typecheck`（各包内部为 `tsc --noEmit`），不要用 build 代替
+- `@saas/shared` 走**构建产物**：改 shared 后先 `pnpm --filter @saas/shared build`（或 `pnpm --filter @saas/shared dev` 开 watch），否则消费方拿到的是旧的 `dist/index.d.ts`
 
 ## 完成标准
 
