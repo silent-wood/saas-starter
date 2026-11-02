@@ -21,9 +21,12 @@ export default defineConfig({
     // https://vitejs.dev/config/build-options.html#build-ssr
     rollupOptions: {
       output: {
-        manualChunks: {
-          react: ['react', 'react-dom', 'react-router'],
-          antd: ['antd', '@ant-design/icons', '@ant-design/pro-components'],
+        // Vite 8（rolldown）移除了 manualChunks 的对象写法，只剩函数形式：
+        // 返回 chunk 名 → 归入该 chunk；返回 undefined → 交给默认分包策略
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          if (/node_modules\/(antd|@ant-design)\//.test(id)) return 'antd';
+          if (/node_modules\/(react|react-dom|react-router)\//.test(id)) return 'react';
         },
       },
     },
