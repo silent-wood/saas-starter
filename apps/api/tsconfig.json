@@ -2,6 +2,10 @@
   "compilerOptions": {
     "module": "nodenext",
     "moduleResolution": "nodenext",
+    // Prisma 生成的客户端用 .ts 后缀做相对导入（importFileExtension = "ts"，
+    // 供 tsx 直接跑 seed）；这里让 tsc 在产物里把 .ts 改写成 .js，
+    // 否则 nest build 出来的 dist/ 会去 require 不存在的 class.ts
+    "rewriteRelativeImportExtensions": true,
     "resolvePackageJsonExports": true,
     "esModuleInterop": true,
     "isolatedModules": true,

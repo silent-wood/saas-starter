@@ -2,6 +2,12 @@ packages:
   - "packages/*"
   - "apps/*"
 
+# pnpm 10 起 overrides 移到本文件（package.json 的 pnpm 字段不再读取）
+overrides:
+  prisma: 7.10.1
+  "@prisma/client": 7.10.1
+  "@prisma/adapter": 7.10.1
+
 allowBuilds:
   "@scarf/scarf": true
   esbuild: true
@@ -11,3 +17,4 @@ allowBuilds:
   "@node-rs/bcrypt": true
   # simple-git-hooks 的 postinstall 会在 pnpm install 后自动重新激活 git hooks
   simple-git-hooks: true
+  "@prisma/engines": true

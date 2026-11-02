@@ -4,7 +4,8 @@ export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
   DATABASE_URL: z.url(),
-  DIRECT_DATABASE_URL: z.url().optional(),
+  // 迁移专用直连地址（绕开 Neon PgBouncer 池化）；命名与 Prisma 官方 directUrl 惯例一致
+  DIRECT_URL: z.url().optional(),
   JWT_SECRET: z.string().min(32),
   JWT_ACCESS_TTL: z.string().default('15m'),
   JWT_REFRESH_TTL: z.string().default('30d'),

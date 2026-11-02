@@ -1,0 +1,154 @@
+// 生成器：Prisma 7 写法（v6 的 "prisma-client-js" 已废弃）
+
+generator client {
+  // Prisma 7 新 provider，生成物不再写 node_modules
+  provider = "prisma-client"
+  // 必填（v7 新增）：产物落 src/generated/prisma，该目录已被 .gitignore 忽略
+  // 每次 prisma generate 重新生成，不入库
+  output   = "../src/generated/prisma"
+  // 生成 ESM 相对导入带 .ts 扩展名：tsx 直接跑 prisma/seed.ts 需要它
+  //（写成 .js 时 tsx 解析不到 .ts 源文件）
+  // ⚠️ 必须同时给 tsconfig 开 rewriteRelativeImportExtensions，
+  //    否则 nest build 出来的 dist/ 会 import 不存在的 class.ts
+  importFileExtension = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// 枚举：取 PG 原生 ENUM，取值与 packages/shared 常量同源
+
+enum UserStatus {
+  active
+  deleted
+}
+
+// member_role: RBAC 三级角色
+enum MemberRole {
+  owner
+  admin
+  member
+}
+
+// member_status：成员生命周期；removed 保留行供留痕，不再出现在成员列表
+enum MemberStatus {
+  active
+  disabled
+  removed
+}
+
+// users：全局表（不含 tenant_id），认证主体
+model User {
+  id              String       @id @default(cuid())
+  email           String       @unique
+  // bcrypt 产 60 字符，VarChar(100) 留余量应对算法升级
+  passwordHash    String       @map("password_hash") @db.VarChar(100)
+  nickname        String       @db.VarChar(50)
+  avatarUrl       String?      @map("avatar_url") @db.VarChar(500)
+  emailVerifiedAt DateTime?    @map("email_verified_at") // 空 = 未验证
+  lastLoginAt     DateTime?    @map("last_login_at")
+  status          UserStatus   @default(active)
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at") // 由 Prisma 维护，不走 DB trigger
+
+  memberships Membership[]
+  // 命名关系：User 与 Tenant 之间只有一条外键（Tenant.ownerId），
+  // 显式命名避免歧义
+  ownedTenants Tenant[]     @relation("TenantOwner")
+  @@map("users")
+}
+
+
+// tenants：租户表（全局表）；deletedAt 软删除 = 回收站（步骤 8 资源回收站同模式）
+model Tenant {
+  id         String    @id @default(cuid())
+  name       String    @db.VarChar(100)
+  logoUrl    String?   @map("logo_url") @db.VarChar(500)
+  brandColor String?   @map("brand_color") @db.VarChar(9) // #RRGGBB 固定 7 字符，留余量
+  ownerId    String    @map("owner_id")
+  deletedAt  DateTime? @map("deleted_at") // 空 = 未删除；删除后 ownerId 保留供恢复
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  owner       User         @relation("TenantOwner", fields: [ownerId], references: [id])
+  memberships Membership[]
+  @@index([ownerId]) // 查"我拥有的租户"
+  @@map("tenants")
+}
+
+
+// memberships：用户↔租户关联，RBAC 载体（步骤 7 多租户隔离的数据基础）
+model Membership {
+  id           String       @id @default(cuid())
+  tenantId     String       @map("tenant_id")
+  userId       String       @map("user_id")
+  role         MemberRole   @default(member)
+  status       MemberStatus @default(active)
+  invitedBy    String?      @map("invited_by")
+  joinedAt     DateTime     @default(now()) @map("joined_at")
+  lastActiveAt DateTime?    @map("last_active_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  // onDelete: Cascade 仅用于**同域内**外键（删租户连带删成员关系）；
+  // 跨域外键一律不级联，防误删扩散（建模纪律 5）
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 一人一租户一条成员记录；多租户查询走 tenant_id 前缀
+  @@unique([tenantId, userId])
+  @@index([userId]) // 反查"用户加入的所有租户"（登录后选租户列表）
+  @@map("memberships")
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// AI 域（M4 知识库问答用，先建是为了让首个 migration 带上 pgvector）
+// ─────────────────────────────────────────────────────────────
+
+// ai_doc_status：文档摄入生命周期
+enum AiDocStatus {
+  processing
+  ready
+  failed
+}
+
+// ai_documents：租户知识库文档元数据
+model AiDocument {
+  id       String      @id @default(cuid())
+  tenantId String      @map("tenant_id")
+  // files 表属文件域（后续步骤建表），先落标量列；
+  // 届时补一个加 FK 约束的 migration 接上 relation
+  fileId   String      @map("file_id")
+  status   AiDocStatus @default(processing)
+  // failed 原因；VarChar(500) 防超长错误信息塞库
+  errorMessage String? @map("error_message") @db.VarChar(500)
+  // 摄入完成回填：切片总数
+  chunkCount   Int     @default(0) @map("chunk_count")
+  uploadedBy   String  @map("uploaded_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  chunks AiChunk[]
+  @@index([tenantId]) // 建模纪律 2：租户表必备 tenant_id 索引
+  @@map("ai_documents")
+}
+
+// ai_chunks：切分片段 + 向量；vector 类型 Prisma 不支持，
+// 走 Unsupported + 手写 migration SQL（§7.7：EXTENSION + ivfflat 索引）
+model AiChunk {
+  id         String   @id @default(cuid())
+  tenantId   String   @map("tenant_id") // 冗余列：检索强制过滤主键
+  documentId String   @map("document_id")
+  seq        Int // 片段序号
+  content    String // 片段文本（引用展示）
+  // 可空：切片先入库、向量化完成后再回填
+  embedding  Unsupported("vector(1536)")?
+  tokenCount Int      @map("token_count")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  document AiDocument @relation(fields: [documentId], references: [id], onDelete: Cascade) // 文档删则向量删
+  @@index([tenantId, documentId])
+  @@map("ai_chunks")
+}

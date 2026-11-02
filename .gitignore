@@ -13,8 +13,16 @@ coverage/
 
 # Prisma 7 生成物不入库（apps/api）
 src/generated/prisma/
+apps/api/src/generated/prisma/
 *.tsbuildinfo
 apps/api/dist/
+
+# prisma init 自动生成的 AI 编辑器技能包（给 Claude Code / Windsurf / Cursor 等
+# 工具用的 Prisma 知识库，与 Prisma 运行无关；本地想用可保留文件，只是不入库）
+.agents/
+.claude/
+.windsurf/
+skills-lock.json
 
 # Vitest 报告与构建产物
 .vitest/

@@ -1,6 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { Public } from '../common/decorators/public.decorator.js';
-
+import { PrismaService } from '../prisma/prisma.service.js';
 export interface HealthPayload {
   status: string;
   uptime: number;
@@ -9,6 +9,7 @@ export interface HealthPayload {
 
 @Controller('health')
 export class HealthController {
+  constructor(private readonly prisma: PrismaService) {}
   @Public()
   @Get()
   check(): HealthPayload {
@@ -18,6 +19,17 @@ export class HealthController {
       status: 'ok',
       uptime: Math.round(process.uptime()),
       timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Public()
+  @Get('db')
+  async checkDb() {
+    const start = Date.now();
+    await this.prisma.$queryRaw`SELECT 1`;
+    return {
+      status: 'ok',
+      latencyMs: Date.now() - start,
     };
   }
 }
