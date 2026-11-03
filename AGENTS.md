@@ -53,7 +53,7 @@
 
 ## 代码风格
 
-- Prettier 统一：100 列 · 双引号 · 分号 · 尾逗号 all · LF（根 `.prettierrc.json`）
+- Prettier 统一：100 列 · 单引号 · 分号 · 尾逗号 all · LF（根 `.prettierrc.json`）
 - TypeScript strict；避免 `any`，必须用时加注释说明原因
 - 前后端共享的请求 / 响应类型与 zod schema 放 `packages/shared`，不要在 web / api 里重复定义
 - 中文注释与提交说明均可，但标识符、分支名用英文
