@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router';
 import { Spin } from 'antd';
 import Login from '@/pages/Login';
+import Register from '@/pages/Register';
 import Dashboard from '@/pages/Dashboard';
 import { RequireAuth } from '@/app/guards/RequireAuth';
 import { AuthLayout } from '@/app/AuthLayout';
@@ -13,6 +14,7 @@ const Resources = lazy(() => import('@/pages/Resource'));
 
 const router = createBrowserRouter([
   { path: '/login', element: <Login /> },
+  { path: '/register', element: <Register /> },
   {
     path: '/app',
     element: (
