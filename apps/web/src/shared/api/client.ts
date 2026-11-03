@@ -8,7 +8,7 @@
  *   - 其余 → 抛 ApiError，由调用方决定 message 提示还是表单字段错误
  */
 import axios from 'axios';
-import { TOKEN_KEY } from '@/app/guards/RequireAuth';
+import { clearToken, getToken } from '@/utils/token';
 
 /** 归一后的错误结构：UI 层唯一消费的错误形态 */
 export interface ApiError {
@@ -34,7 +34,7 @@ export const apiClient = axios.create({
 
 // 请求拦截：注入 token
 apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem(TOKEN_KEY);
+  const token = getToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -47,7 +47,7 @@ apiClient.interceptors.response.use(
   (error: unknown) => {
     // 用 window.location 跳转而非 router 实例，避免与 router.tsx 循环依赖
     if (axios.isAxiosError(error) && error.response?.status === 401) {
-      localStorage.removeItem(TOKEN_KEY);
+      clearToken();
       window.location.replace('/login');
       return Promise.reject(toApiError(error, { code: 401, message: '登录已过期，请重新登录' }));
     }

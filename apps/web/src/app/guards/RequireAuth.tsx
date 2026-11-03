@@ -1,11 +1,9 @@
 import type { ReactNode } from 'react';
 import { Navigate } from 'react-router';
-
-export const TOKEN_KEY = 'token';
+import { getToken } from '@/utils/token';
 
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const token = localStorage.getItem(TOKEN_KEY);
-  if (!token) {
+  if (!getToken()) {
     return <Navigate to="/login" replace />;
   }
   return <>{children}</>;

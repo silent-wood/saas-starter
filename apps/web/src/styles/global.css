@@ -18,9 +18,94 @@
 
 @import 'antd/dist/reset.css' layer(base);
 
+/**
+ * 设计令牌（CSS 侧）
+ *
+ * 值来自设计稿「色彩速查」与「S1 登录 · 红线标注」，与 src/theme/tokens.ts
+ * 里的 COLOR / FONT_FAMILY 一一对应 —— antd 只吃 JS 值、Tailwind 只吃 CSS 变量，
+ * 所以必须存在两份。**改动时两处同步**，tokens.sync.test.ts 会机械校验，
+ * 只改一处会直接测试失败。
+ *
+ * 用法：bg-layout / bg-surface / text-ink / text-ink-3 / border-line / bg-primary …
+ */
+@theme {
+  --color-primary: #1a56db;
+  --color-primary-hover: #3d72e4;
+  --color-primary-active: #1648b5;
+  --color-primary-bg: #f0f5ff;
+  --color-success: #52c41a;
+  --color-warning: #faad14;
+  --color-danger: #ff4d4f;
+  --color-ink: #262626;
+  --color-ink-2: #595959;
+  --color-ink-3: #8c8c8c;
+  --color-ink-disabled: #bfbfbf;
+  --color-line: #d9d9d9;
+  --color-split: #f0f0f0;
+  --color-layout: #f5f5f5;
+  --color-surface: #ffffff;
+  --font-sans:
+    'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', sans-serif;
+}
+
 /* 让 min-h-screen / h-full 在 SPA 根容器上生效 */
 html,
 body,
 #root {
   height: 100%;
+}
+
+/**
+ * 页面基线：字族 / 正文色 / 页面底
+ * 本项目没引 Tailwind preflight，body 上没有字体与颜色基线，
+ * 不显式声明会退回浏览器默认的 Times + 纯黑，与设计稿不符。
+ */
+body {
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background: var(--color-layout);
+}
+
+/**
+ * 表单密度覆盖（仅认证页，作用域限定 .auth-form）
+ *
+ * 设计稿红线标注：字段间距 16、标签与输入间距 4、输入框 padding 0 12。
+ * antd 默认是 24 / 8 / 11，且由 CSS-in-JS 运行时注入、**不在任何 @layer 内**，
+ * 因此这里用「未分层 + 更高特异性」覆盖即可，无需 !important。
+ */
+.auth-form .ant-form-item {
+  margin-bottom: 16px;
+}
+
+/* 必须提高特异性：antd 的垂直表单规则与本文件的单类选择器同级，
+   而它的 <style> 是运行时注入、排在打包 CSS 之后，同级别会覆盖我们。
+   重复类名是提高特异性最直接的做法，且不引入 !important。 */
+.auth-form .ant-form-item-label.ant-form-item-label {
+  padding-bottom: 4px;
+}
+
+.auth-form .ant-form-item-label > label {
+  height: auto;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: #262626;
+}
+
+.auth-form .ant-input,
+.auth-form .ant-input-affix-wrapper {
+  padding-inline: 12px;
+}
+
+/* affix 包装器已经给了左右内边距，内部 input 不能再叠一层 */
+.auth-form .ant-input-affix-wrapper > input.ant-input {
+  padding-inline: 0;
+}
+
+/* 辅助说明（如密码强度提示）：设计稿「辅助」档 12/18 #8C8C8C */
+.auth-form .ant-form-item-extra {
+  font-size: 12px;
+  line-height: 18px;
+  color: #8c8c8c;
 }

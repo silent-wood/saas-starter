@@ -1,6 +1,6 @@
 import { Button, Layout, Space } from 'antd';
 import { Link, Outlet, useNavigate } from 'react-router';
-import { TOKEN_KEY } from './guards/RequireAuth';
+import { clearToken } from '@/utils/token';
 
 const { Header, Content } = Layout;
 
@@ -8,7 +8,7 @@ export function AuthLayout() {
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    localStorage.removeItem(TOKEN_KEY);
+    clearToken();
     navigate('/login', { replace: true });
   };
 
