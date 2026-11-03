@@ -13,25 +13,19 @@ export function AuthLayout() {
   };
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
+    <Layout className="min-h-screen!">
+      <Header className="flex items-center justify-between">
         <Space size="large">
-          <Link to="/app" style={{ color: '#fff' }}>
+          <Link to="/app" className="text-white">
             Dashboard
           </Link>
-          <Link to="/app/resources" style={{ color: '#fff' }}>
+          <Link to="/app/resources" className="text-white">
             Resources
           </Link>
         </Space>
         <Button onClick={handleLogout}>退出登录</Button>
       </Header>
-      <Content style={{ padding: 24 }}>
+      <Content className="p-6">
         <Outlet />
       </Content>
     </Layout>

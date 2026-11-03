@@ -1,2 +1,26 @@
-@import 'tailwindcss/utilities';
-@import 'antd/dist/reset.css';
+/**
+ * 全局样式入口（唯一入口，main.tsx 引入）
+ *
+ * Tailwind v4 采用「分层按需引入」而非 `@import "tailwindcss"` 全量引入：
+ * 1. 不引 preflight —— 它会重置 button / img / h1 等基础元素，与 antd 组件样式冲突；
+ * 2. 只引 theme（设计令牌）+ utilities（工具类），布局能力完整、体积最小；
+ * 3. antd reset 显式归入 base 层 —— 产物层序为
+ *    components < base < theme < utilities，utilities 始终最高，
+ *    保证 Tailwind 工具类能覆盖 reset，符合「工具类优先」的预期。
+ *    注意：这条声明只表达意图，实际层序由 @import 出现顺序与编译结果决定。
+ *
+ * 注意：@layer 声明语句必须写在所有 @import 之前（CSS 规范对该语句有例外）。
+ */
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+@import 'antd/dist/reset.css' layer(base);
+
+/* 让 min-h-screen / h-full 在 SPA 根容器上生效 */
+html,
+body,
+#root {
+  height: 100%;
+}
