@@ -8,6 +8,26 @@ import { z } from 'zod';
  */
 
 /**
+ * 本文件用到的 Zod API 速查（v4）：
+ *
+ * - z.object({...})      定义「一组键值」的 schema；缺键或类型不符 → 校验失败
+ * - z.enum(['a','b'])    值必须是列出的字面量之一（如 NODE_ENV 只允许三个值）
+ * - z.url()              必须是合法 URL 字符串；缺了/非法 → 失败
+ * - z.string()           必须是字符串
+ * - z.coerce.number()    先把值（环境变量永远是 string）转成 number 再校验
+ * - .int() / .positive() 追加数值约束（整数 / 正数）
+ * - .min(n)              字符串最小长度（如 JWT_SECRET 至少 32 位）
+ * - .default(x)          键缺失时用 x 兜底，而不是报错（如 PORT 默认 3000）
+ * - .optional()          键可以完全不存在；存在时才校验（如 DIRECT_URL）
+ * - .transform(fn)       校验通过后把值做一次转换（booleanFromEnv 把 'true' 变成布尔 true）
+ * - .superRefine(fn)     跨字段联动校验（单键管不了的规则，如「非 dev 必须有 MAIL_API_KEY」）
+ *
+ * 为什么端口/有效期要用 z.coerce.number() 而不是 z.number()？
+ *   process.env 里的值一律是 string，z.number() 直接校验 "3000" 会失败，
+ *   所以凡是从环境变量读数字的键，都必须先 coerce 成 number。
+ */
+
+/**
  * 布尔值不能直接用 `z.coerce.boolean()`：`Boolean("false") === true`，
  * 环境变量里写 `MAIL_DEV_MODE=false` 反而会开启。这里限定字面量再转换。
  */
@@ -30,6 +50,13 @@ export const envSchema = z
     // 只有 prisma migrate / db push 这类 DDL 需要它，运行时缺失不报错，故为 optional
     DIRECT_URL: z.url().optional(),
 
+    // ── 测试库（e2e 专用，与上面的开发库同构）──
+    // e2e 连独立测试库、绝不写开发库（方案 §5.2）。
+    // 用 optional 而非必填：日常 pnpm dev / test 并不需要测试库，
+    // 若写成 z.url() 必填，缺键会导致正常开发启动直接失败
+    DATABASE_URL_TEST: z.url().optional(),
+    // 测试库的迁移直连地址。只有对测试库做 migrate deploy（DDL）时才需要，运行时缺失不报错
+    DIRECT_URL_TEST: z.url().optional(),
     // ── 认证 ──
     // access token 的签名密钥，至少 32 位（openssl rand -base64 48）。长度不足直接拒绝启动：
     // 短密钥可被暴力穷举，等于任何人都能自签合法令牌

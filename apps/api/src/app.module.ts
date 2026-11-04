@@ -9,6 +9,7 @@ import { HealthModule } from './modules/health/health.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './modules/auth/auth.module.ts';
+import { TenantsModule } from './modules/tenants/tenants.module.ts';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { AuthModule } from './modules/auth/auth.module.ts';
     PrismaModule,
     HealthModule,
     AuthModule,
+    TenantsModule,
   ],
   providers: [
     // 全局守卫注册在这里，而**不是** app.useGlobalGuards(new JwtAuthGuard())：

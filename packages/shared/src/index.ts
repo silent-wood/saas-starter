@@ -158,7 +158,7 @@ export const tenantListItemSchema = z.object({
   role: z.enum([ROLE.owner, ROLE.admin, ROLE.member]),
   /** 成员关系状态，取自 `memberships.status`；列表只返回 `active`，其余状态用于后续成员管理页 */
   status: z.enum([MEMBER_STATUS.active, MEMBER_STATUS.disabled, MEMBER_STATUS.removed]),
-  /** 最近一次在该租户内活跃时间（`memberships.last_active_at`），ISO 8601；从未活跃为 null */
+  /** 最近一次与该租户的交互时间（`memberships.last_active_at`），ISO 8601；从未交互为 null */
   lastActiveAt: z.string().nullable(),
 });
 
