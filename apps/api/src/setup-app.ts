@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor.js';
-
+import cookieParser from 'cookie-parser';
 /**
  * 全局装配：前缀、校验、统一响应 / 统一错误、安全头、CORS、Swagger。
  *
@@ -14,7 +14,11 @@ export function setupApp(app: INestApplication): INestApplication {
   const config = app.get(ConfigService);
 
   app.setGlobalPrefix('api/v1');
-
+  // 解析 Cookie 到 req.cookies。refresh token 走 httpOnly cookie，
+  // 没有这行，/auth/refresh 和 /auth/logout 里读到的 req.cookies 永远是 undefined。
+  // 不传 secret：refresh token 本身是随机串 + 服务端存 SHA-256，
+  // 不做 cookie 签名（多一层签名会让轮转时的比对逻辑变复杂，且没有安全收益）
+  app.use(cookieParser());
   // Zod schema 校验（schema 来自 @saas/shared，与前端同源）
   app.useGlobalPipes(new StandardSchemaValidationPipe());
 
