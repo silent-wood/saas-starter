@@ -117,6 +117,42 @@ export const verifyEmailSchema = z.object({
 
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
 
+/**
+ * 申请重置密码入参（`POST /auth/forgot-password`）。
+ *
+ * 只含 `email` 一个字段。**防枚举是本接口的第一要务**：无论邮箱是否存在，
+ * 都返回 200 且响应体/耗时一致（见 §4.3），所以这里只校验邮箱格式，
+ * 不关心它是否注册过——是否注册过是 service 的静默判断，不进 schema。
+ */
+export const forgotPasswordSchema = z.object({
+  /** 用户填写的邮箱。后端会做 `trim + toLowerCase` 归一化后再查库，前端无需自己处理 */
+  email: z.string().min(1, '请输入邮箱').email('邮箱格式不正确'),
+});
+
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+
+/**
+ * 重置密码入参（`POST /auth/reset-password`）。
+ *
+ * - `token`：来自邮件链接 `${APP_WEB_URL}/reset-password?token=xxx`，明文只出现在链接与请求体，
+ *   库里只存 `sha256(token)`。**有意只校验非空**：令牌不存在/已用/已过期一律由 service
+ *   抛 `TOKEN_INVALID`，若在此限制格式，短令牌会先被 422 拦下，与异常表口径不符。
+ * - `password`：强度规则与 `registerSchema` 完全一致（8–64 位，含字母与数字），
+ *   保证重置后的密码和注册时的强度约束同一套，不会出现"注册能过、重置不能过"的差异。
+ */
+export const resetPasswordSchema = z.object({
+  /** 32 字节随机数的 hex（64 字符）；这里不校验格式，交给 service 查库判定 */
+  token: z.string().min(1, '缺少重置令牌'),
+  /** 新明文密码，bcrypt(cost=12) 落库为 password_hash */
+  password: z
+    .string()
+    .min(8, '密码至少 8 位')
+    .max(64, '密码不超过 64 位')
+    .regex(/^(?=.*[A-Za-z])(?=.*\d)/, '密码需同时包含字母和数字'),
+});
+
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
 // ─────────────────────────────────────────────────────────────
 // 出参契约（前端 z.infer 复用，不在两端各写一份）
 // ─────────────────────────────────────────────────────────────
@@ -251,6 +287,33 @@ export const meResultSchema = z.object({
 });
 
 export type MeResult = z.infer<typeof meResultSchema>;
+
+/**
+ * `POST /auth/forgot-password` 成功响应（200）。
+ *
+ * 无论邮箱是否存在，响应都是这一个 `{ ok: true }`，**不携带任何能泄露账号状态的字段**。
+ * 前端因此不能靠这个接口判断邮箱是否注册，只能统一提示「若该邮箱已注册，重置链接已发送」。
+ */
+export const forgotPasswordResultSchema = z.object({
+  /** 恒为 true，仅表示请求已被处理（存在则已发信，不存在则静默） */
+  ok: z.literal(true),
+});
+
+export type ForgotPasswordResult = z.infer<typeof forgotPasswordResultSchema>;
+
+/**
+ * `POST /auth/reset-password` 成功响应（200）。
+ *
+ * 走到这里说明三件事已在**同一事务**里完成：token 已消费（`used_at` 置位）、
+ * 密码已改（`password_hash` 更新）、该用户全部 refresh token 已吊销。
+ * 失败一律抛 `TOKEN_INVALID`（不存在/已用/已过期），不会走到这个成功体。
+ */
+export const resetPasswordResultSchema = z.object({
+  /** 恒为 true，仅表示密码已成功重置 */
+  ok: z.literal(true),
+});
+
+export type ResetPasswordResult = z.infer<typeof resetPasswordResultSchema>;
 
 /**
  * `GET /tenants` 成功响应（200）。需带 access token。

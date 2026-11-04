@@ -122,3 +122,4 @@
 | 编号 | 功能 | 状态 | 版本 | 涉及接口 |
 |------|------|------|------|---------|
 | 01 | 注册与登录 | 已确认 | v1.0 | POST /auth/register、/auth/verify-email、/auth/login、/auth/refresh、/auth/logout、GET /auth/me、GET /tenants |
+| 02 | 找回密码 | 已确认 | v1.0 | POST /auth/forgot-password、/auth/reset-password |

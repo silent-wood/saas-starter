@@ -15,6 +15,8 @@ import { ConfigService } from '@nestjs/config';
 import { Public } from '../../common/decorators/public.decorator.ts';
 import {
   ERROR_CODES,
+  type ForgotPasswordInput,
+  type ForgotPasswordResult,
   type LoginInput,
   type LoginResult,
   type LogoutResult,
@@ -22,10 +24,14 @@ import {
   type RefreshResult,
   type RegisterInput,
   type RegisterResult,
+  type ResetPasswordInput,
+  type ResetPasswordResult,
   type VerifyEmailInput,
   VerifyEmailResult,
+  forgotPasswordSchema,
   loginSchema,
   registerSchema,
+  resetPasswordSchema,
   verifyEmailSchema,
 } from '@saas/shared';
 import type { Response, Request } from 'express';
@@ -80,6 +86,25 @@ export class AuthController {
     @Body({ schema: verifyEmailSchema }) body: VerifyEmailInput,
   ): Promise<VerifyEmailResult> {
     return this.authService.verifyEmail(body.token);
+  }
+
+  @Public()
+  @Post('forgot-password')
+  @Throttle({ default: { limit: 5, ttl: 15 * 60 * 1000 } })
+  @HttpCode(HttpStatus.OK)
+  forgotPassword(
+    @Body({ schema: forgotPasswordSchema }) body: ForgotPasswordInput,
+  ): Promise<ForgotPasswordResult> {
+    return this.authService.forgotPassword(body);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  resetPassword(
+    @Body({ schema: resetPasswordSchema }) body: ResetPasswordInput,
+  ): Promise<ResetPasswordResult> {
+    return this.authService.resetPassword(body);
   }
 
   @Public()

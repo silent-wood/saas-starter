@@ -8,12 +8,16 @@ import {
 import {
   AuthUser,
   ERROR_CODES,
+  ForgotPasswordInput,
+  ForgotPasswordResult,
   LoginInput,
   LoginResult,
   LogoutResult,
   MeResult,
   RegisterInput,
   RegisterResult,
+  ResetPasswordInput,
+  ResetPasswordResult,
   VerifyEmailResult,
 } from '@saas/shared';
 import bcrypt from 'bcrypt';
@@ -26,6 +30,8 @@ import { User } from '../../generated/prisma/client.ts';
 const BCRYPT_ROUNDS = 12;
 /** 邮箱验证令牌有效期，与 MailService 文案里的 15 分钟保持一致 */
 const VERIFY_TOKEN_TTL_MS = 15 * 60 * 1000;
+/** 重置密码令牌有效期（30 分钟），与 MailService 文案里的 30 分钟保持一致 */
+const RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
 
 /** 登录结果 + 明文 refresh（refresh 由 controller 写 cookie，不进响应体） */
 export interface LoginOutcome extends LoginResult {
@@ -189,6 +195,91 @@ export class AuthService {
       return tenant.id;
     });
     return { verified: true, tenantId };
+  }
+
+  // ----------找回密码-------------------
+
+  /**
+   * 申请重置密码。
+   *
+   * 防枚举是本方法的第一要务：邮箱存在与否，响应体、状态码、耗时必须完全一致。
+   *  - 存在：写一条 reset_password 令牌 + 发邮件
+   *  - 不存在：什么都不做（不写库、不发信），但仍返回 { ok: true }
+   *
+   * 可重复申请：每次申请都【新增】一条 token，不覆盖旧 token。旧 token 在成功
+   * 重置后会被 used_at 标记，天然失效；未重置前多次申请，最新的链接也能用。
+   */
+  async forgotPassword(input: ForgotPasswordInput): Promise<ForgotPasswordResult> {
+    const email = this.normalizeEmail(input.email);
+    const user = await this.prisma.user.findUnique({ where: { email } });
+
+    // 邮箱不存在：静默成功，不泄露任何信息（见 AC-03）
+    if (!user) return { ok: true };
+
+    const token = this.tokenService.createOpaqueToken();
+    // 令牌落库只存 SHA-256，明文只出现在邮件链接里。
+    // payload 列是必填 Json（schema 未标 ?），但找回密码的令牌不需要挂业务数据，传空对象占位
+    await this.prisma.emailToken.create({
+      data: {
+        userId: user.id,
+        type: 'reset_password',
+        tokenHash: this.tokenService.hashToken(token),
+        expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS),
+        payload: {},
+      },
+    });
+
+    await this.mailService.sendResetPasswordEmail(email, token);
+    return { ok: true };
+  }
+
+  /**
+   * 用邮件链接里的 token 重置密码。
+   *
+   * 三件事必须【同一事务】完成，否则会出现「密码已改但旧会话还在」或
+   * 「token 已消费但密码没改」的半吊子状态：
+   *   1. 消费 token：updateMany 抢占式置 used_at（并发重放只有一次成功）
+   *   2. 更新 users.password_hash（bcrypt cost=12）
+   *   3. 吊销该用户【全部】refresh token（改密后所有设备下线，AC-08）
+   */
+  async resetPassword(input: ResetPasswordInput): Promise<ResetPasswordResult> {
+    const invalid = () =>
+      new BadRequestException({
+        code: ERROR_CODES.TOKEN_INVALID,
+        message: '链接无效或已过期，请重新获取',
+      });
+
+    const record = await this.prisma.emailToken.findFirst({
+      where: { tokenHash: this.tokenService.hashToken(input.token), type: 'reset_password' },
+    });
+
+    // token 不存在 / 已使用 / 已过期，统一抛 TOKEN_INVALID（AC-05）
+    if (!record || record.usedAt || record.expiresAt.getTime() <= Date.now()) throw invalid();
+
+    const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
+
+    await this.prisma.$transaction(async (tx) => {
+      // 抢占式消费：where 里带 usedAt:null，并发第二次会拿到 count=0，直接失败
+      const consumed = await tx.emailToken.updateMany({
+        where: { id: record.id, usedAt: null },
+        data: { usedAt: new Date() },
+      });
+      if (consumed.count === 0) throw invalid();
+
+      await tx.user.update({
+        where: { id: record.userId },
+        data: { passwordHash },
+      });
+
+      // 改密吊销全部 refresh：让所有已登录设备下次 refresh 都 401（他端下线）
+      await tx.refreshToken.updateMany({
+        where: { userId: record.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    });
+
+    this.logger.log(`user.resetPassword success userId=${record.userId}`);
+    return { ok: true };
   }
 
   // ----------登录----------------------
