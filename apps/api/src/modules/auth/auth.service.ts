@@ -17,10 +17,10 @@ import {
   VerifyEmailResult,
 } from '@saas/shared';
 import bcrypt from 'bcrypt';
-import { PrismaService } from '../prisma/prisma.service.ts';
+import { PrismaService } from '../../prisma/prisma.service.ts';
 import { TokenService } from './token.service.ts';
 import { MailService } from './mail.service.ts';
-import { User } from '../generated/prisma/client.ts';
+import { User } from '../../generated/prisma/client.ts';
 
 /** bcrypt 成本因子：12 ≈ 单次哈希 200ms，离线爆破成本与登录延迟的平衡点 */
 const BCRYPT_ROUNDS = 12;

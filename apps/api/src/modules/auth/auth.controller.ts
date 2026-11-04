@@ -12,7 +12,7 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service.ts';
 import { ConfigService } from '@nestjs/config';
-import { Public } from '../common/decorators/public.decorator.ts';
+import { Public } from '../../common/decorators/public.decorator.ts';
 import {
   ERROR_CODES,
   type LoginInput,
@@ -29,7 +29,7 @@ import {
   verifyEmailSchema,
 } from '@saas/shared';
 import type { Response, Request } from 'express';
-import type { AuthenticatedRequest } from '../common/types/authenticated-request.ts';
+import type { AuthenticatedRequest } from '../../common/types/authenticated-request.ts';
 
 /** cookie 名与作用域提成常量：controller 与 e2e 断言要共用，写死两处必然对不上 */
 const REFRESH_COOKIE = 'refresh_token';

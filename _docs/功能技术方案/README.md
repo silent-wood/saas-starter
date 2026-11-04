@@ -57,7 +57,7 @@
 > 一页速览
 > 接口：METHOD /path · METHOD /path
 > 前端落点：pages/Xxx、shared/api/xxx
-> 后端落点：src/xxx/{controller,service}.ts
+> 后端落点：src/modules/xxx/{controller,service}.ts
 > 关键异常：CODE_A / CODE_B
 
 ## 1. 需求

@@ -5,10 +5,10 @@ import { JwtModule } from '@nestjs/jwt';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard.js';
 import configuration from './config/configuration.js';
 import { envSchema } from './config/env.schema.js';
-import { HealthModule } from './health/health.module.js';
+import { HealthModule } from './modules/health/health.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import { AuthModule } from './auth/auth.module.ts';
+import { AuthModule } from './modules/auth/auth.module.ts';
 
 @Module({
   imports: [
