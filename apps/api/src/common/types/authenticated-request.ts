@@ -21,4 +21,6 @@ export interface JwtPayload {
  */
 export interface AuthenticatedRequest extends Request {
   user: JwtPayload;
+  /** TenantGuard 校验通过后写入：当前用户在该租户的角色（RBAC 用，Step 8.3） */
+  userRole?: string;
 }

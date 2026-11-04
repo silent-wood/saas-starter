@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HealthController } from './health.controller.js';
-import { PrismaService } from '../../prisma/prisma.service.js';
+import { PRISMA } from '../../prisma/prisma.module.js';
 
 describe('HealthController', () => {
   let controller: HealthController;
@@ -8,11 +8,12 @@ describe('HealthController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [HealthController],
-      // HealthController 构造器注入了 PrismaService（/health/db 要查库），
-      // 单测不连库 → 用 mock 顶掉，只验证控制器自身逻辑
+      // HealthController 构造器注入了扩展 client（PRISMA token，/health/db 要查库），
+      // 单测不连库 → 用 mock 顶掉，只验证控制器自身逻辑。
+      // token 是 Symbol，必须 provide: PRISMA，与 controller 里的 @Inject(PRISMA) 对齐
       providers: [
         {
-          provide: PrismaService,
+          provide: PRISMA,
           useValue: { $queryRaw: vi.fn().mockResolvedValue([{ '?column?': 1 }]) },
         },
       ],

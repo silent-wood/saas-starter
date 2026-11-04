@@ -1,6 +1,7 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Inject } from '@nestjs/common';
 import { Public } from '../../common/decorators/public.decorator.js';
-import { PrismaService } from '../../prisma/prisma.service.js';
+import { PRISMA } from '../../prisma/prisma.module.ts';
+import type { ExtendedPrismaClient } from '../../prisma/prisma.service.ts';
 export interface HealthPayload {
   status: string;
   uptime: number;
@@ -9,7 +10,9 @@ export interface HealthPayload {
 
 @Controller('health')
 export class HealthController {
-  constructor(private readonly prisma: PrismaService) {}
+  // 注入带租户隔离扩展的 client。健康检查用 $queryRaw 探测数据库连通性，
+  // 与业务读写走同一个连接池。token 是 Symbol，必须显式 @Inject
+  constructor(@Inject(PRISMA) private readonly prisma: ExtendedPrismaClient) {}
   @Public()
   @Get()
   check(): HealthPayload {

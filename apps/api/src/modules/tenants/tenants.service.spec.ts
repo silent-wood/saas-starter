@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import type { Mock } from 'vitest';
 import { TenantsService } from './tenants.service.ts';
-import { PrismaService } from '../../prisma/prisma.service.ts';
+import { PRISMA } from '../../prisma/prisma.module.ts';
 
 /**
  * TenantsService 单测。
@@ -36,10 +36,11 @@ describe('TenantsService', () => {
       providers: [
         TenantsService,
         {
-          // 用假对象顶掉真实的 PrismaService：单测不连库。
-          // useValue 只提供一个「长得像 PrismaService 一部分」的对象即可，
-          // 因为被测方法只会用到 membership.findMany 这一个入口
-          provide: PrismaService,
+          // 用假对象顶掉真实的扩展 client（PRISMA token）：单测不连库。
+          // useValue 只提供一个「长得像 client 一部分」的对象即可，
+          // 因为被测方法只会用到 membership.findMany 这一个入口。
+          // token 是 Symbol，必须显式 provide: PRISMA，与 service 里的 @Inject(PRISMA) 对齐
+          provide: PRISMA,
           useValue: { membership: { findMany } },
         },
       ],

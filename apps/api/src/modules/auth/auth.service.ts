@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   Logger,
   UnauthorizedException,
@@ -21,7 +22,8 @@ import {
   VerifyEmailResult,
 } from '@saas/shared';
 import bcrypt from 'bcrypt';
-import { PrismaService } from '../../prisma/prisma.service.ts';
+import { PRISMA } from '../../prisma/prisma.module.ts';
+import type { ExtendedPrismaClient } from '../../prisma/prisma.service.ts';
 import { TokenService } from './token.service.ts';
 import { MailService } from './mail.service.ts';
 import { User } from '../../generated/prisma/client.ts';
@@ -74,7 +76,10 @@ export class AuthService {
   private readonly dummyHash = bcrypt.hashSync('timing-equalizer-placeholder', BCRYPT_ROUNDS);
 
   constructor(
-    private readonly prisma: PrismaService,
+    // 注入带租户隔离扩展的 client。认证域的表（user/emailToken/refreshToken）都不在
+    // 租户白名单里，扩展不会影响它们；统一注入 PRISMA 是为了全项目口径一致，
+    // 避免「有的地方用扩展、有的地方用裸 client」。token 是 Symbol，必须显式 @Inject
+    @Inject(PRISMA) private readonly prisma: ExtendedPrismaClient,
     private readonly tokenService: TokenService,
     private readonly mailService: MailService,
   ) {}

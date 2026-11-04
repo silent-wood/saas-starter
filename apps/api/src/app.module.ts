@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
@@ -10,6 +10,8 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './modules/auth/auth.module.ts';
 import { TenantsModule } from './modules/tenants/tenants.module.ts';
+import { TenantGuard } from './common/guards/tenant.guard.ts';
+import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware.ts';
 
 @Module({
   imports: [
@@ -47,6 +49,15 @@ import { TenantsModule } from './modules/tenants/tenants.module.ts';
     // 表现为「一访问就 500」。APP_GUARD 走容器，依赖才能正常注入
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    // TenantGuard 必须排在 JwtAuthGuard 之后：APP_GUARD 数组顺序即执行顺序，
+    // 先由 JwtAuthGuard 验 token、写入 req.user.sub，TenantGuard 才能用它查 membership。
+    // 顺序颠倒会拿到 undefined 的 req.user，所有受保护请求都 403
+    { provide: APP_GUARD, useClass: TenantGuard },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    // 中间件对【所有路由】生效。读 X-Tenant-Id 建立租户上下文
+    consumer.apply(TenantContextMiddleware).forRoutes('*');
+  }
+}

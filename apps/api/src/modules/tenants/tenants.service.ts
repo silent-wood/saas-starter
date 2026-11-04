@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service.ts';
+import { Inject, Injectable } from '@nestjs/common';
+import { PRISMA } from '../../prisma/prisma.module.ts';
+import type { ExtendedPrismaClient } from '../../prisma/prisma.service.ts';
 import type { TenantListItem } from '@saas/shared';
 
 /**
@@ -14,10 +15,13 @@ import type { TenantListItem } from '@saas/shared';
  */
 @Injectable()
 export class TenantsService {
-  // PrismaService 是 @Global 提供的，直接注入即可，无需在本模块 import PrismaModule。
-  // `private readonly` + 参数属性：TS 会自动把它声明为实例字段并赋值，等价于
-  // `private readonly prisma: PrismaService; constructor(p){ this.prisma = p; }`
-  constructor(private readonly prisma: PrismaService) {}
+  // 注入带租户隔离扩展的 client（PRISMA token），而不是 PrismaService。
+  // PRISMA 由 PrismaModule 以 useValue 提供（extendedClient 实例），是全局 provider，
+  // 本模块无需 import PrismaModule。用 @Inject(PRISMA) 显式指定 token：
+  // 因为 token 是 Symbol，TS/Nest 无法从「类型」反推要注入哪个，必须显式 @Inject。
+  // `private readonly` + 参数属性：TS 自动声明实例字段并赋值，等价于
+  // `private readonly prisma: ExtendedPrismaClient; constructor(p){ this.prisma = p; }`
+  constructor(@Inject(PRISMA) private readonly prisma: ExtendedPrismaClient) {}
 
   /**
    * 返回某用户所属的租户列表，按最近活跃时间降序（从未活跃的排最后）。

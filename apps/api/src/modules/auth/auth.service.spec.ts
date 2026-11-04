@@ -5,7 +5,7 @@ import bcrypt from 'bcrypt';
 import { AuthService } from './auth.service.ts';
 import { TokenService } from './token.service.ts';
 import { MailService } from './mail.service.ts';
-import { PrismaService } from '../../prisma/prisma.service.ts';
+import { PRISMA } from '../../prisma/prisma.module.ts';
 
 /**
  * AuthService 找回/重置密码的单测。
@@ -46,10 +46,10 @@ describe('AuthService - 找回密码', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
-        // PrismaService：只 stub 用到的方法；$transaction 用一个透传执行器，
+        // Prisma client（PRISMA token）：只 stub 用到的方法；$transaction 用一个透传执行器，
         // 让 resetPassword 里的 tx.xxx 直接走真实的 mock（tx 即 prisma 本身）
         {
-          provide: PrismaService,
+          provide: PRISMA,
           useValue: {
             user: { findUnique: userFindUnique, update: userUpdate },
             emailToken: {
