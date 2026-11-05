@@ -1,3 +1,4 @@
+import { Role } from '@saas/shared';
 import { Request } from 'express';
 
 /**
@@ -21,6 +22,13 @@ export interface JwtPayload {
  */
 export interface AuthenticatedRequest extends Request {
   user: JwtPayload;
-  /** TenantGuard 校验通过后写入：当前用户在该租户的角色（RBAC 用，Step 8.3） */
-  userRole?: string;
+  /**
+   * TenantGuard 校验通过后写入：当前用户在该租户的角色（RBAC 用，Step 8.3）。
+   *
+   * 类型收窄成 Role 而不是 string：RolesGuard 的 required.includes(userRole)
+   * 若两边都是 string，@Roles('membr') 这种拼错能过编译、只在运行时表现为永远无权限。
+   * 可选（?）是因为 @SkipTenant 的接口不会写这个字段 —— 也正是 @Roles 不能
+   * 与 @SkipTenant 同标的根因。
+   */
+  userRole?: Role;
 }

@@ -198,3 +198,44 @@ model AiChunk {
   @@index([tenantId, documentId])
   @@map("ai_chunks")
 }
+
+// ─────────────────────────────────────────────────────────────
+// 审计域（RBAC + 留痕，功能方案 06）
+// ─────────────────────────────────────────────────────────────
+
+// 审计结果。取值必须与 packages/shared 的 result 字面量（'success' | 'failed'）一致 ——
+// 两边是各写一份的，改枚举时别忘了改 AuditRecord.result，编译期抓不到这种漂移
+enum AuditResult {
+  success
+  failed
+}
+
+// audit_logs：敏感操作留痕，保留 180 天（M3 cleanup 队列删除）
+// 刻意不加任何 FK：
+//   1. 审计记录必须独立存活 —— 用户注销、租户删除后仍要能查到「谁在何时删了什么」
+//   2. 符合建模纪律「跨域外键一律不级联」，避免删租户把留痕一起带走
+// 所以 tenant_id / actor_user_id 只存 id 快照，不做约束
+// 另：本表不在 tenant.extension 的 TENANT_SCOPED 白名单里，写入/查询都要显式给 tenantId
+model AuditLog {
+  id          String      @id @default(cuid())
+  // NULL = 账号级事件（当前无此类写入，登录审计随 05 落地后启用）
+  tenantId    String?     @map("tenant_id")
+  // 谁做的。NOT NULL：无登录用户的接口不该标 @Audit
+  actorUserId String      @map("actor_user_id")
+  // 'member.disable' / 'resource.delete'，常量在 shared 的 AUDIT_ACTIONS
+  action      String      @db.VarChar(50)
+  objectType  String?     @map("object_type") @db.VarChar(30)
+  objectId    String?     @map("object_id")
+  // PG 原生 INET；Prisma 7 的 @db.Inet 已实测 validate 通过
+  ip          String?     @db.Inet
+  result      AuditResult
+  // 脱敏上下文：只放 method / path / durationMs / statusCode，禁止明文凭证
+  detail      Json?
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  // 审计页按「租户 + 时间倒序」翻页
+  @@index([tenantId, createdAt])
+  // 按动作类型筛选（member.* / resource.* / subscription.*）
+  @@index([tenantId, action])
+  @@map("audit_logs")
+}

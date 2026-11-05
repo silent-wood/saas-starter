@@ -36,6 +36,7 @@ import {
 } from '@saas/shared';
 import type { Response, Request } from 'express';
 import type { AuthenticatedRequest } from '../../common/types/authenticated-request.ts';
+import { SkipTenant } from '../../common/decorators/skip-tenant.decorator.ts';
 
 /** cookie 名与作用域提成常量：controller 与 e2e 断言要共用，写死两处必然对不上 */
 const REFRESH_COOKIE = 'refresh_token';
@@ -154,8 +155,15 @@ export class AuthController {
     return { ok: true };
   }
 
-  /** 唯一需要登录的接口：没有 @Public()，走全局 JwtAuthGuard，req.user 由守卫写入 */
+  /**
+   * 唯一需要登录的接口：没有 @Public()，走全局 JwtAuthGuard，req.user 由守卫写入。
+   *
+   * @SkipTenant()：这里是「账号级」接口，前端还没选定租户，不可能带 X-Tenant-Id。
+   * 不标的话会被 TenantGuard 以「缺少租户上下文」403，刚登录就进不了首页。
+   * 注意它只跳租户守卫，JwtAuthGuard 照旧生效 —— 与 @Public() 正好互补。
+   */
   @Get('me')
+  @SkipTenant()
   me(@Req() req: AuthenticatedRequest): Promise<MeResult> {
     return this.authService.me(req.user.sub);
   }

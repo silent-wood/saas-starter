@@ -9,6 +9,8 @@ import { PRISMA } from '../../prisma/prisma.module.ts';
 import type { ExtendedPrismaClient } from '../../prisma/prisma.service.ts';
 import { AuthenticatedRequest } from '../types/authenticated-request.ts';
 import { ERROR_CODES } from '@saas/shared';
+import { Reflector } from '@nestjs/core';
+import { SKIP_TENANT_KEY } from '../decorators/skip-tenant.decorator.ts';
 
 /**
  * 租户守卫：校验请求方是否有权访问 X-Tenant-Id 指定的租户。
@@ -20,12 +22,26 @@ import { ERROR_CODES } from '@saas/shared';
  * 只做一件事：查 membership（userId + tenantId + status=active），
  * 存在则把 role 挂到 req.userRole，供后续 RBAC（Step 8.3 的 RolesGuard）使用；
  * 不存在或缺少 X-Tenant-Id 头，一律 403 TENANT_MISMATCH。
+ *
+ * 例外通道：标了 @SkipTenant() 的接口在第一步就 return true，既不要求头也不查库。
+ * 注意它跟 @Public() 是两回事 —— @Public 只跳 JwtAuthGuard，本守卫照旧会拦。
+ * /health 当初就是因为只标了 @Public 而 403，探活失败。
  */
 @Injectable()
 export class TenantGuard implements CanActivate {
-  constructor(@Inject(PRISMA) private readonly prisma: ExtendedPrismaClient) {}
+  constructor(
+    private readonly reflector: Reflector,
+    @Inject(PRISMA) private readonly prisma: ExtendedPrismaClient,
+  ) {}
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const req = context.switchToHttp().getRequest<AuthenticatedRequest & { userRole?: string }>();
+    // 反射放在最前面：跳过判断必须早于任何取 header / 查库的动作，
+    // 否则 @SkipTenant 只是「少查一次库」，仍然会因为缺头被 403
+    const skip = this.reflector.getAllAndOverride<boolean>(SKIP_TENANT_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (skip) return true;
+    const req = context.switchToHttp().getRequest<AuthenticatedRequest>();
     // 1) 拿租户 id：只信 X-Tenant-Id 头，不信任任何 body/query 里的 tenantId（业务纪律）
     const tenantId = req.headers['x-tenant-id'];
     if (!tenantId || typeof tenantId !== 'string') {

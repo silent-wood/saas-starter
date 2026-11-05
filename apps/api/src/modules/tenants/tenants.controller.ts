@@ -2,6 +2,7 @@ import { Controller, Get, Req } from '@nestjs/common';
 import type { TenantListResult } from '@saas/shared';
 import type { AuthenticatedRequest } from '../../common/types/authenticated-request.ts';
 import { TenantsService } from './tenants.service.ts';
+import { SkipTenant } from '../../common/decorators/skip-tenant.decorator.ts';
 
 /**
  * 租户 HTTP 入口。
@@ -29,7 +30,12 @@ export class TenantsController {
    *   TransformInterceptor 完成，Controller 不要自己拼包装，否则会被包两层。
    */
   @Get()
+  @SkipTenant()
   async list(@Req() req: AuthenticatedRequest): Promise<TenantListResult> {
+    // @SkipTenant()：本接口就是「列出我能进哪些租户」，调用时还没选定租户，
+    // 自然没有 X-Tenant-Id 可带。要它反而成了先有鸡还是先有蛋。
+    // 数据范围由 req.user.sub 决定（service 里查 membership），不依赖租户上下文。
+
     // @Req() 拿到原始请求对象；req.user 是 JwtAuthGuard 校验通过后写入的
     //（类型 AuthenticatedRequest 在 common/types 里定义，含 { sub, type }）
     const items = await this.tenantsService.listByUser(req.user.sub);

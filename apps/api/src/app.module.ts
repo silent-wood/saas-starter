@@ -1,6 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard.js';
 import configuration from './config/configuration.js';
@@ -12,6 +12,9 @@ import { AuthModule } from './modules/auth/auth.module.ts';
 import { TenantsModule } from './modules/tenants/tenants.module.ts';
 import { TenantGuard } from './common/guards/tenant.guard.ts';
 import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware.ts';
+import { AuditModule } from './modules/audit/audit.module.ts';
+import { AuditInterceptor } from './common/interceptors/audit.interceptor.ts';
+import { RolesGuard } from './common/guards/roles.guard.ts';
 
 @Module({
   imports: [
@@ -42,6 +45,7 @@ import { TenantContextMiddleware } from './common/middleware/tenant-context.midd
     HealthModule,
     AuthModule,
     TenantsModule,
+    AuditModule,
   ],
   providers: [
     // 全局守卫注册在这里，而**不是** app.useGlobalGuards(new JwtAuthGuard())：
@@ -53,6 +57,17 @@ import { TenantContextMiddleware } from './common/middleware/tenant-context.midd
     // 先由 JwtAuthGuard 验 token、写入 req.user.sub，TenantGuard 才能用它查 membership。
     // 顺序颠倒会拿到 undefined 的 req.user，所有受保护请求都 403
     { provide: APP_GUARD, useClass: TenantGuard },
+    // 排在 TenantGuard 之后（末位）：它读的 req.userRole 由 TenantGuard 写入。
+    // 它只读该字段、绝不查库，否则每个受保护请求会多一次 membership 查询。
+    // 连带后果：标了 @SkipTenant() 的接口 userRole 一定是 undefined，
+    // 所以 @Roles 与 @SkipTenant 不能同时标 —— 那样会 fail-closed 一律 403
+    { provide: APP_GUARD, useClass: RolesGuard },
+    // 审计。注册成全局拦截器而不是逐控制器 @UseInterceptors：
+    // 后续新增的接口只要标 @Audit 就自动生效，不需要记得去挂拦截器。
+    // 无 @Audit 的接口在 intercept 第一行就 return，零额外开销。
+    // 注意放在 AuditModule 之后导入 —— AuditService 由它提供（虽然是 @Global，
+    // 但 imports 里不列会让人误以为依赖关系不存在）
+    { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
   ],
 })
 export class AppModule implements NestModule {
