@@ -57,6 +57,10 @@
 
 - Prettier 统一：100 列 · 单引号 · 分号 · 尾逗号 all · LF（根 `.prettierrc.json`）
 - TypeScript strict；避免 `any`，必须用时加注释说明原因
+- 未使用代码的口径：`unused-imports/no-unused-imports: error`（有 fixer，保存 / `--fix` 即删）；
+  未使用的**变量、声明、函数一律不报**（`unused-imports/no-unused-vars` 与
+  `@typescript-eslint/no-unused-vars` 均为 `off`）。开发期常留占位常量与待接入分支，
+  提前报错只会逼人删掉再写回来；收尾时人工清一遍即可
 - 前后端共享的请求 / 响应类型与 zod schema 放 `packages/shared`，不要在 web / api 里重复定义
 - 中文注释与提交说明均可，但标识符、分支名用英文
 
