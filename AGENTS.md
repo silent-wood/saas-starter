@@ -17,7 +17,9 @@
 - 全仓任务：`pnpm turbo run dev | build | lint | typecheck | test`
 - 单包操作：`pnpm --filter <name> <script>`（`<name>` 取各包 `package.json` 的 `name` 字段，不是目录名），如 `pnpm --filter @saas/web dev`；装依赖同样加 filter：`pnpm --filter <name> add <pkg>`
 - 类型检查是 `typecheck`（各包内部为 `tsc --noEmit`），不要用 build 代替
-- `@saas/shared` 走**构建产物**：改 shared 后先 `pnpm --filter @saas/shared build`（或 `pnpm --filter @saas/shared dev` 开 watch），否则消费方拿到的是旧的 `dist/index.d.ts`
+- `@saas/shared` 的**类型与运行时都走构建产物**：`exports.types` → `dist/index.d.ts`，`exports.import` → `dist/index.js`。改 shared 后必须先 `pnpm --filter @saas/shared build`（或 `dev` 开 watch），否则**类型检查与运行时一起是旧的**。
+  注意 `exports.types` 写 `src/index.ts` 是**无效配置**：tsc 不把 `.ts` 当声明入口，会静默回退到 `import` 条件旁的 `dist/index.d.ts`，让人误以为"类型读源码"
+- 声明产物的坑（2026-11-06 修复）：tsc 生成 `.d.ts` 时会把 zod 内部类型展开成 `z.z.core.$strip`，而 zod 4 的默认导出类型里没有 `z` 命名空间。消费方在 `moduleResolution: bundler` + `skipLibCheck: true` 下**不报错**，而是让所有 `z.infer` 出来的契约类型**静默退化成 `any`**。因此 shared 的契约文件必须 `import * as z from 'zod'`，不要用默认导入
 
 ## 功能开发流程
 

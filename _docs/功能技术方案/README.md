@@ -121,10 +121,10 @@
 
 | 编号 | 功能 | 状态 | 版本 | 涉及接口 |
 |------|------|------|------|---------|
-| 01 | 注册与登录 | 已确认 | v1.0 | POST /auth/register、/auth/verify-email、/auth/login、/auth/refresh、/auth/logout、GET /auth/me、GET /tenants |
-| 02 | 找回密码 | 已确认 | v1.0 | POST /auth/forgot-password、/auth/reset-password |
+| 01 | 注册与登录 | 已确认 | v1.2 | POST /auth/register、/auth/verify-email、/auth/login、/auth/refresh、/auth/logout、GET /auth/me、GET /tenants |
+| 02 | 找回密码 | 已确认 | v1.1 | POST /auth/forgot-password、/auth/reset-password |
 | 03 | 多租户行级隔离 | 已实现 | v1.0 | 无新增接口（机制层） |
-| 04 | 租户创建与切换 | 规划中 | — | — |
+| 04 | 租户创建与切换 | 已确认 | v1.0 | 无新增接口（切换为纯前端行为，复用 GET /tenants；创建进版本池） |
 | 05 | 成员与邀请 | 规划中 | — | — |
 | 06 | RBAC 与审计 | 已确认 | v1.0 | 无新增接口（机制层） |
 | 07 | 资源 CRUD + 回收站 | 规划中 | — | — |
