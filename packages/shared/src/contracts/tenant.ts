@@ -1,4 +1,8 @@
-import z from 'zod';
+// 必须用命名空间导入（`import * as z`）而不是默认导入：
+// 生成的 .d.ts 里 zod 内部类型会写成 `z.z.core.$strip` 这类限定名，
+// 默认导入在消费方（尤其 `moduleResolution: bundler`）拿不到 `z` 成员，
+// 会让 `z.infer` 整体退化成 any，且被 skipLibCheck 静默吞掉。
+import * as z from 'zod';
 import { MEMBER_STATUS, ROLE } from '../roles.js';
 
 /**

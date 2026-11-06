@@ -57,10 +57,18 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
  *  - @Post('register')        → 子路径，最终是 POST /api/v1/auth/register
  *  - @HttpCode(201)           → 覆盖默认的 200 状态码（Nest 对 POST 默认返回 201）
  *  - @Public()                → 跳过全局 JwtAuthGuard，未登录也能访问
+ *  - @SkipTenant()            → 跳过全局 TenantGuard，不需要 X-Tenant-Id 头
  *  - @Throttle(...)           → 覆盖默认限流（登录收紧到 5 次/15 分钟）
  *  - @Body({ schema })        → Nest 12 写法，由 StandardSchemaValidationPipe 校验
  *  - @Res({ passthrough:true})→ 拿到底层 res 但返回体仍由 Nest 处理（用于写 cookie）
+ *
+ * 为什么 @SkipTenant 标在**类**上：认证接口全是账号级操作，发生在此之前
+ * （登录前根本没有租户可选，注册/找回密码时用户还没有任何租户）。而 @Public()
+ * 只跳 JwtAuthGuard，TenantGuard 照旧会拦——只标 @Public 会得到
+ * 403 `TENANT_MISMATCH 缺少租户上下文`，整条认证链路直接不可用。
+ * 放在类上比逐个方法标更安全：新增认证接口自动继承，不会漏。
  */
+@SkipTenant()
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -117,6 +125,10 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResult> {
     const { accessToken, refreshToken, user } = await this.authService.login(body);
+    // 本期固定下发持久 cookie（Max-Age = REFRESH_TTL_DAYS，30 天）：
+    // body.rememberMe 被契约接收但**服务端不读取**，理由见 loginSchema 的注释。
+    // 保留 setRefreshCookie 的 persistent 形参，将来接「不记住 → 会话 cookie」时
+    // 只需把这里改回 `body.rememberMe !== false`，不用动其它地方
     this.setRefreshCookie(res, refreshToken);
     return { accessToken, user };
   }
@@ -158,12 +170,10 @@ export class AuthController {
   /**
    * 唯一需要登录的接口：没有 @Public()，走全局 JwtAuthGuard，req.user 由守卫写入。
    *
-   * @SkipTenant()：这里是「账号级」接口，前端还没选定租户，不可能带 X-Tenant-Id。
-   * 不标的话会被 TenantGuard 以「缺少租户上下文」403，刚登录就进不了首页。
-   * 注意它只跳租户守卫，JwtAuthGuard 照旧生效 —— 与 @Public() 正好互补。
+   * 租户由类级 @SkipTenant() 统一跳过（账号级接口，此时前端还没选定租户）；
+   * 但 JwtAuthGuard 照旧生效 —— 两者是互补的，不是替代关系。
    */
   @Get('me')
-  @SkipTenant()
   me(@Req() req: AuthenticatedRequest): Promise<MeResult> {
     return this.authService.me(req.user.sub);
   }
@@ -175,7 +185,14 @@ export class AuthController {
     return cookies?.[REFRESH_COOKIE];
   }
 
-  private setRefreshCookie(res: Response, token: string): void {
+  /**
+   * 写 refresh cookie。
+   *
+   * `persistent=false` 时**故意不传 maxAge**：Express 会退化成会话 cookie，
+   * 浏览器关闭即失效。注意 30 天的服务端有效期仍然生效，两者是不同维度——
+   * cookie 的存活时间由客户端决定，令牌能否换出新 access 由服务端决定。
+   */
+  private setRefreshCookie(res: Response, token: string, persistent = true): void {
     res.cookie(REFRESH_COOKIE, token, {
       httpOnly: true, // JS 读不到，XSS 也偷不走
       sameSite: 'strict', // 跨站请求不带，CSRF 的主要防线
@@ -183,7 +200,9 @@ export class AuthController {
       // 所以按环境判断，不写死
       secure: this.config.getOrThrow<string>('nodeEnv') === 'production',
       path: REFRESH_COOKIE_PATH, // 只在 /api/v1/auth 下发送，业务接口拿不到它
-      maxAge: this.config.getOrThrow<number>('jwt.refreshTtlDays') * MS_PER_DAY,
+      ...(persistent
+        ? { maxAge: this.config.getOrThrow<number>('jwt.refreshTtlDays') * MS_PER_DAY }
+        : {}),
     });
   }
 }

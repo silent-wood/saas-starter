@@ -1,4 +1,8 @@
-import z from 'zod';
+// 必须用命名空间导入（`import * as z`）而不是默认导入：
+// 生成的 .d.ts 里 zod 内部类型会写成 `z.z.core.$strip` 这类限定名，
+// 默认导入在消费方（尤其 `moduleResolution: bundler`）拿不到 `z` 成员，
+// 会让 `z.infer` 整体退化成 any，且被 skipLibCheck 静默吞掉。
+import * as z from 'zod';
 
 /**
  * 登录入参。
@@ -12,6 +16,15 @@ export const loginSchema = z.object({
   email: z.string().min(1, '请输入邮箱').email('邮箱格式不正确'),
   /** 明文密码，仅用于本次请求传输；后端 bcrypt(cost=12) 比对，不落库 */
   password: z.string().min(1, '请输入密码').min(8, '密码至少 8 位'),
+  /**
+   * 「记住我」。**本期服务端不读取**：refresh cookie 的 `Max-Age` 固定为
+   * `REFRESH_TTL_DAYS`（30 天），传 `true` / `false` / 不传，结果完全一致。
+   *
+   * 字段保留而不是删掉，是因为设计稿 S1 有这个复选框，将来要做「不记住 →
+   * 会话 cookie」时只改服务端一行，不动契约、不用改调用方。在那之前前端
+   * **不渲染**该控件——留一个勾了没用的复选框，比没有更糟。
+   */
+  rememberMe: z.boolean().optional(),
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;

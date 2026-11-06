@@ -293,8 +293,8 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { email },
     });
-
-    // 账号不存在时也拿假哈希跑一次对比，让两条路径耗时一致
+    // 调试期打过明文密码，已移除：日志会进控制台、日志文件与采集端，
+    // 属于凭据泄露（安全规范 §4 日志脱敏）。需要排查登录问题请用邮箱 + 结果码。
     const passwordMatches = await bcrypt.compare(
       input.password,
       user?.passwordHash ?? this.dummyHash,
