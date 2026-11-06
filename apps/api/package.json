@@ -64,6 +64,7 @@
     "@vitest/coverage-v8": "^5.0.5",
     "eslint": "^10.13.0",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-unused-imports": "^4.4.1",
     "prettier": "^3.9.10",
     "prisma": "7.10.1",
     "source-map-support": "^0.5.21",
