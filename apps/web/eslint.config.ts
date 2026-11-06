@@ -6,6 +6,7 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
+import unusedImports from 'eslint-plugin-unused-imports';
 import prettier from 'eslint-config-prettier';
 export default tseslint.config(
   // 全局忽略：构建产物 / 依赖 / 测试覆盖率报告，不参与 lint
@@ -20,6 +21,7 @@ export default tseslint.config(
     plugins: {
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,
+      'unused-imports': unusedImports,
     },
     rules: {
       // ===== 基础规则集 =====
@@ -53,6 +55,18 @@ export default tseslint.config(
       // 禁止遗留 console 调试语句：warn 级（非 error），
       // 避免 build 脚本 / 错误上报等合理 console 被误伤；提交前请自行清理 debug 日志
       'no-console': 'warn',
+
+      // ===== 未使用代码：只自动删 import，变量与函数一律保留 =====
+      // 关掉 TS 自带的版本，否则它会把「未使用的变量/函数」继续报成 error
+      '@typescript-eslint/no-unused-vars': 'off',
+
+      // 未使用的 import：**有 fixer**，eslint --fix / 编辑器保存即删除。
+      // 删 import 不改变运行时行为，是唯一能安全自动化的一类
+      'unused-imports/no-unused-imports': 'error',
+
+      // 未使用的变量 / 声明 / 函数：有意保留，不检查。
+      // （开发中常留占位、TODO 分支、待接入的常量；报 error 会逼人提前删掉再写回来）
+      'unused-imports/no-unused-vars': 'off',
     },
   },
   {

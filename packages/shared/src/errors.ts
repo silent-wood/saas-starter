@@ -38,6 +38,10 @@ export const ERROR_CODES = {
   // AI 族
   AI_DOCUMENT_NOT_READY: 'AI_DOCUMENT_NOT_READY',
   AI_DEGRADED: 'AI_DEGRADED',
+
+  // 资源状态冲突：注册邮箱重复、成员状态非法等。
+  // 未显式带 code 的ConflictException 落到这里
+  CONFLICT: 'CONFLICT',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

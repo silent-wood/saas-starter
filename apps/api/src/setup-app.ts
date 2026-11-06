@@ -1,9 +1,15 @@
-import { INestApplication, StandardSchemaValidationPipe } from '@nestjs/common';
+import {
+  HttpStatus,
+  INestApplication,
+  StandardSchemaValidationPipe,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { ERROR_CODES } from '@saas/shared';
+import cookieParser from 'cookie-parser';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor.js';
-
 /**
  * 全局装配：前缀、校验、统一响应 / 统一错误、安全头、CORS、Swagger。
  *
@@ -14,9 +20,31 @@ export function setupApp(app: INestApplication): INestApplication {
   const config = app.get(ConfigService);
 
   app.setGlobalPrefix('api/v1');
-
+  // 解析 Cookie 到 req.cookies。refresh token 走 httpOnly cookie，
+  // 没有这行，/auth/refresh 和 /auth/logout 里读到的 req.cookies 永远是 undefined。
+  // 不传 secret：refresh token 本身是随机串 + 服务端存 SHA-256，
+  // 不做 cookie 签名（多一层签名会让轮转时的比对逻辑变复杂，且没有安全收益）
+  app.use(cookieParser());
   // Zod schema 校验（schema 来自 @saas/shared，与前端同源）
-  app.useGlobalPipes(new StandardSchemaValidationPipe());
+  // 校验失败统一抛 422 + VALIDATION_FAILED，并在 message 里带上具体字段错误，
+  // 否则默认是 400 + 英文「Bad Request Exception」，前端拿不到「哪个字段错了」
+  app.useGlobalPipes(
+    new StandardSchemaValidationPipe({
+      errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
+      exceptionFactory: (issues) => {
+        // issues 是 Standard Schema 的校验结果数组，每项含 path（哪个字段）与 message（为什么错）
+        const details = issues.map((issue) => ({
+          path: issue.path?.map(String).join('.') ?? '',
+          message: issue.message,
+        }));
+        return new UnprocessableEntityException({
+          code: ERROR_CODES.VALIDATION_FAILED,
+          message: '请求参数校验失败',
+          details,
+        });
+      },
+    }),
+  );
 
   // 统一响应 / 统一错误
   app.useGlobalInterceptors(new TransformInterceptor());

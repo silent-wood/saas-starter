@@ -52,10 +52,12 @@ model User {
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at") // 由 Prisma 维护，不走 DB trigger
 
-  memberships Membership[]
+  memberships     Membership[]
   // 命名关系：User 与 Tenant 之间只有一条外键（Tenant.ownerId），
   // 显式命名避免歧义
-  ownedTenants Tenant[]     @relation("TenantOwner")
+  ownedTenants    Tenant[]     @relation("TenantOwner")
+  emailTokens     EmailToken[]
+  refreshTokens   RefreshToken[]
   @@map("users")
 }
 
@@ -101,6 +103,50 @@ model Membership {
   @@index([userId]) // 反查"用户加入的所有租户"（登录后选租户列表）
   @@map("memberships")
 }
+
+// ─────────────────────────────────────────────────────────────
+// 认证域：邮件令牌 + 可吊销会话
+// ─────────────────────────────────────────────────────────────
+// email_token_type：邮件令牌用途（verify 15min / reset 30min）
+enum EmailTokenType {
+  verify_email
+  reset_password
+}
+
+// email_tokens: 验证 / 重置 里ing拍；库中只留哈希，原文仅出现在邮件链接
+model EmailToken {
+  id          String        @id @default(cuid())
+  userId      String        @map("user_id")
+  type        EmailTokenType
+  // SHA-256 的 hex，固定 64 字符：不存明文令牌
+  tokenHash   String        @map("token_hash") @db.VarChar(64)
+  expiresAt   DateTime      @map("expires_at")
+  usedAt      DateTime?     @map("used_at") // 非空 = 已消费，防重放
+  createdAt   DateTime      @default(now()) @map("created_at")
+  payload     Json
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash]) // 校验时按哈希反查
+  @@index([userId, type]) // 重发前失效旧的同类令牌
+  @@index([expiresAt]) // M3 cleanup 队列扫过期
+  @@map("email_tokens")
+}
+
+// refresh_tokens：可吊销会话；轮转不删行，置 revoked_at
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash") @db.VarChar(64) // SHA-256
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at") // 登出 / 轮转 / 改密（改密吊销全部）
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
 
 
 // ─────────────────────────────────────────────────────────────
@@ -151,4 +197,45 @@ model AiChunk {
   document AiDocument @relation(fields: [documentId], references: [id], onDelete: Cascade) // 文档删则向量删
   @@index([tenantId, documentId])
   @@map("ai_chunks")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 审计域（RBAC + 留痕，功能方案 06）
+// ─────────────────────────────────────────────────────────────
+
+// 审计结果。取值必须与 packages/shared 的 result 字面量（'success' | 'failed'）一致 ——
+// 两边是各写一份的，改枚举时别忘了改 AuditRecord.result，编译期抓不到这种漂移
+enum AuditResult {
+  success
+  failed
+}
+
+// audit_logs：敏感操作留痕，保留 180 天（M3 cleanup 队列删除）
+// 刻意不加任何 FK：
+//   1. 审计记录必须独立存活 —— 用户注销、租户删除后仍要能查到「谁在何时删了什么」
+//   2. 符合建模纪律「跨域外键一律不级联」，避免删租户把留痕一起带走
+// 所以 tenant_id / actor_user_id 只存 id 快照，不做约束
+// 另：本表不在 tenant.extension 的 TENANT_SCOPED 白名单里，写入/查询都要显式给 tenantId
+model AuditLog {
+  id          String      @id @default(cuid())
+  // NULL = 账号级事件（当前无此类写入，登录审计随 05 落地后启用）
+  tenantId    String?     @map("tenant_id")
+  // 谁做的。NOT NULL：无登录用户的接口不该标 @Audit
+  actorUserId String      @map("actor_user_id")
+  // 'member.disable' / 'resource.delete'，常量在 shared 的 AUDIT_ACTIONS
+  action      String      @db.VarChar(50)
+  objectType  String?     @map("object_type") @db.VarChar(30)
+  objectId    String?     @map("object_id")
+  // PG 原生 INET；Prisma 7 的 @db.Inet 已实测 validate 通过
+  ip          String?     @db.Inet
+  result      AuditResult
+  // 脱敏上下文：只放 method / path / durationMs / statusCode，禁止明文凭证
+  detail      Json?
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  // 审计页按「租户 + 时间倒序」翻页
+  @@index([tenantId, createdAt])
+  // 按动作类型筛选（member.* / resource.* / subscription.*）
+  @@index([tenantId, action])
+  @@map("audit_logs")
 }

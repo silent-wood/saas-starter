@@ -1,2 +1,111 @@
-@import 'tailwindcss/utilities';
-@import 'antd/dist/reset.css';
+/**
+ * 全局样式入口（唯一入口，main.tsx 引入）
+ *
+ * Tailwind v4 采用「分层按需引入」而非 `@import "tailwindcss"` 全量引入：
+ * 1. 不引 preflight —— 它会重置 button / img / h1 等基础元素，与 antd 组件样式冲突；
+ * 2. 只引 theme（设计令牌）+ utilities（工具类），布局能力完整、体积最小；
+ * 3. antd reset 显式归入 base 层 —— 产物层序为
+ *    components < base < theme < utilities，utilities 始终最高，
+ *    保证 Tailwind 工具类能覆盖 reset，符合「工具类优先」的预期。
+ *    注意：这条声明只表达意图，实际层序由 @import 出现顺序与编译结果决定。
+ *
+ * 注意：@layer 声明语句必须写在所有 @import 之前（CSS 规范对该语句有例外）。
+ */
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+@import 'antd/dist/reset.css' layer(base);
+
+/**
+ * 设计令牌（CSS 侧）
+ *
+ * 值来自设计稿「色彩速查」与「S1 登录 · 红线标注」，与 src/theme/tokens.ts
+ * 里的 COLOR / FONT_FAMILY 一一对应 —— antd 只吃 JS 值、Tailwind 只吃 CSS 变量，
+ * 所以必须存在两份。**改动时两处同步**，tokens.sync.test.ts 会机械校验，
+ * 只改一处会直接测试失败。
+ *
+ * 用法：bg-layout / bg-surface / text-ink / text-ink-3 / border-line / bg-primary …
+ */
+@theme {
+  --color-primary: #1a56db;
+  --color-primary-hover: #3d72e4;
+  --color-primary-active: #1648b5;
+  --color-primary-bg: #f0f5ff;
+  --color-success: #52c41a;
+  --color-warning: #faad14;
+  --color-danger: #ff4d4f;
+  --color-ink: #262626;
+  --color-ink-2: #595959;
+  --color-ink-3: #8c8c8c;
+  --color-ink-disabled: #bfbfbf;
+  --color-line: #d9d9d9;
+  --color-split: #f0f0f0;
+  --color-layout: #f5f5f5;
+  --color-surface: #ffffff;
+  --font-sans:
+    'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', sans-serif;
+}
+
+/* 让 min-h-screen / h-full 在 SPA 根容器上生效 */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+/**
+ * 页面基线：字族 / 正文色 / 页面底
+ * 本项目没引 Tailwind preflight，body 上没有字体与颜色基线，
+ * 不显式声明会退回浏览器默认的 Times + 纯黑，与设计稿不符。
+ */
+body {
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background: var(--color-layout);
+}
+
+/**
+ * 表单密度覆盖（仅认证页，作用域限定 .auth-form）
+ *
+ * 设计稿红线标注：字段间距 16、标签与输入间距 4、输入框 padding 0 12。
+ * antd 默认是 24 / 8 / 11，且由 CSS-in-JS 运行时注入、**不在任何 @layer 内**，
+ * 因此这里用「未分层 + 更高特异性」覆盖即可，无需 !important。
+ */
+.auth-form .ant-form-item {
+  margin-bottom: 16px;
+}
+
+/* 必须提高特异性：antd 的垂直表单规则与本文件的单类选择器同级，
+   而它的 <style> 是运行时注入、排在打包 CSS 之后，同级别会覆盖我们。
+   重复类名是提高特异性最直接的做法，且不引入 !important。 */
+.auth-form .ant-form-item-label.ant-form-item-label {
+  padding-bottom: 4px;
+}
+
+.auth-form .ant-form-item-label > label {
+  height: auto;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: #262626;
+}
+
+.auth-form .ant-input,
+.auth-form .ant-input-affix-wrapper {
+  padding-inline: 12px;
+}
+
+/* affix 包装器已经给了左右内边距，内部 input 不能再叠一层 */
+.auth-form .ant-input-affix-wrapper > input.ant-input {
+  padding-inline: 0;
+}
+
+/* 辅助说明（如密码强度提示）：设计稿「辅助」档 12/18 #8C8C8C */
+.auth-form .ant-form-item-extra {
+  font-size: 12px;
+  line-height: 18px;
+  color: #8c8c8c;
+}

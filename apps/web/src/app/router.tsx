@@ -2,17 +2,34 @@ import { lazy, Suspense } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router';
 import { Spin } from 'antd';
 import Login from '@/pages/Login';
+import Register from '@/pages/Register';
 import Dashboard from '@/pages/Dashboard';
 import { RequireAuth } from '@/app/guards/RequireAuth';
 import { AuthLayout } from '@/app/AuthLayout';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import NotFound from '@/pages/NotFound';
 import Forbidden from '@/pages/Forbidden';
+import VerifyEmail from '@/pages/VerifyEmail';
+import { ForgotPassword } from '@/pages/ForgotPassword';
+import { SelectTenant } from '@/pages/SelectTenant';
+import { ResetPassword } from '@/pages/ResetPassword';
 
 const Resources = lazy(() => import('@/pages/Resource'));
 
 const router = createBrowserRouter([
   { path: '/login', element: <Login /> },
+  { path: '/register', element: <Register /> },
+  { path: '/verify-email', element: <VerifyEmail /> }, // 新增，公开
+  { path: '/forgot-password', element: <ForgotPassword /> }, // 新增，公开
+  { path: '/reset-password', element: <ResetPassword /> }, // 新增，公开
+  {
+    path: '/select-tenant', // 新增，需登录但无布局
+    element: (
+      <RequireAuth>
+        <SelectTenant />
+      </RequireAuth>
+    ),
+  },
   {
     path: '/app',
     element: (

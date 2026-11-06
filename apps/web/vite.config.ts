@@ -7,13 +7,13 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'src'),
+      '@': path.resolve(import.meta.dirname, 'src'),
     },
   },
   css: {
     preprocessorOptions: {
       less: {
-        additionalData: `@import ${path.resolve(__dirname, 'src/styles/variables.less')};`,
+        additionalData: `@import ${path.resolve(import.meta.dirname, 'src/styles/variables.less')};`,
       },
     },
   },
