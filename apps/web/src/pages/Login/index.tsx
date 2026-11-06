@@ -5,52 +5,90 @@
  * 本文件只负责表单区（邮箱 / 密码 / 记住我 + 忘记密码 / 主按钮）。
  *
  * 校验：复用 `@saas/shared` 的 `loginSchema`，前后端同一份规则，不在 web 侧重复定义。
- * 「记住我」是纯 UI 关注点（不进接口契约），所以用 useState 而非塞进 schema。
+ * 「记住我」进接口契约（`rememberMe`），决定 refresh cookie 是持久还是会话级；
+ * 本地只额外记住邮箱，不落任何令牌。
  *
- * 提交：当前阶段**不发请求**——校验通过后写入模拟 token 并跳转（规范 §19 记录的
- * "演示期有意取舍"）。接真实后端时把 `onSubmit` 换成
- * `apiClient.post('/auth/login', values)`，表单层无需改动。
+ * 提交：走真实接口 `POST /auth/login`（方案 01），成功后写 store 并跳转 /app。
+ * 「忘记密码」跳 `/forgot-password`（方案 02 F-04），不再给「开发中」的占位提示。
  */
 import { useState } from 'react';
-import { App, Button, Checkbox, Form, Input } from 'antd';
+import { Alert, App, Button, Form, Input } from 'antd';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
-import { Navigate, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { loginSchema, type LoginInput } from '@saas/shared';
 import { AuthShell } from '@/components/auth/AuthShell';
 import { COPY } from '@/constants/copy';
-import { getToken, setToken } from '@/utils/token';
+import { authApi } from '@/shared/api/auth';
+import { useAuthStore } from '@/stores/auth';
+import type { ApiError } from '@/shared/api/client';
+import { LOGIN_COPY, REMEMBERED_EMAIL_KEY } from './constants';
+
+/** 注册页跳过来时带的 state（只读，不参与接口契约） */
+interface LoginLocationState {
+  registeredEmail?: string;
+}
 
 /** 登录页：邮箱 + 密码，校验通过后写入登录态并进入应用 */
 export default function Login() {
   const navigate = useNavigate();
   const { message } = App.useApp();
-  // 「记住我」只影响 token 的持久化位置（localStorage / sessionStorage），不属于表单校验
-  const [remember, setRemember] = useState(false);
+  const location = useLocation();
+
+  const registeredEmail = (location.state as LoginLocationState | null)?.registeredEmail;
+  /** 上次记住的邮箱：注册跳转的优先级更高，它一定是最新提交的那个 */
+  const rememberedEmail = localStorage.getItem(REMEMBERED_EMAIL_KEY) ?? '';
+
+  /** 提示条可关闭：用户已经知道要收信了，不该每次刷新都占着卡片顶部 */
+  const [showRegistered, setShowRegistered] = useState(Boolean(registeredEmail));
 
   const {
     control,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: '', password: '' },
+    defaultValues: { email: registeredEmail ?? rememberedEmail, password: '' },
     mode: 'onBlur',
   });
 
-  // 已登录直接进首页；注意所有 hook 必须写在条件返回之前（rules-of-hooks）
-  if (getToken()) {
-    return <Navigate to="/app" replace />;
-  }
+  const onSubmit = async (values: LoginInput) => {
+    try {
+      // 显式传 true，把「默认持久登录」写进调用方而不是靠后端默认值：
+      // 将来要做「不记住」时，这里改成受控值即可，服务端不用再改一次契约
+      const { accessToken, user } = await authApi.login({ ...values, rememberMe: true });
+      // 只记邮箱用于下次预填。登录态本身由 refresh cookie 决定（30 天），
+      // 前端不再有「记住我」开关，也就没有「不记住」这条分支
+      localStorage.setItem(REMEMBERED_EMAIL_KEY, values.email);
 
-  const onSubmit = () => {
-    // 不发请求：仅本地模拟登录态
-    setToken(`mock-token-${Date.now()}`, remember);
-    navigate('/app', { replace: true });
+      useAuthStore.getState().setSession(accessToken, user);
+      navigate('/app', { replace: true });
+    } catch (error) {
+      const err = error as ApiError;
+      if (err.code === 'EMAIL_NOT_VERIFIED') {
+        message.warning('邮箱尚未验证，请查收验证邮件');
+      } else if (err.code === 'RATE_LIMITED') {
+        message.error('尝试过于频繁，请 15 分钟后再尝试');
+      } else {
+        message.error(err.message || LOGIN_COPY.submitFailed);
+      }
+    }
   };
 
   return (
     <AuthShell mode="login" privacy={COPY.auth.privacyLogin}>
+      {showRegistered && registeredEmail && (
+        <Alert
+          type="success"
+          showIcon
+          closable
+          className="mb-4"
+          title={LOGIN_COPY.registeredTitle}
+          description={LOGIN_COPY.registeredDesc(registeredEmail)}
+          onClose={() => setShowRegistered(false)}
+        />
+      )}
+
       <Form
         className="auth-form"
         layout="vertical"
@@ -91,25 +129,21 @@ export default function Login() {
           />
         </Form.Item>
 
-        {/* 辅助行：左「记住我」，右「忘记密码?」 */}
-        <div className="flex items-center justify-between">
-          <Checkbox
-            checked={remember}
-            onChange={(event) => setRemember(event.target.checked)}
-            className="text-sm! leading-[22px]! text-ink-2!"
-          >
-            {COPY.auth.rememberMe}
-          </Checkbox>
-          <button
-            type="button"
-            onClick={() => void message.info(COPY.auth.forgotPasswordTodo)}
-            className="cursor-pointer border-0 bg-transparent p-0 text-sm leading-[22px] text-primary"
-          >
+        {/* 右「忘记密码?」 */}
+        <div className="flex items-center justify-end">
+          <Link to="/forgot-password" className="text-sm leading-5.5 text-primary">
             {COPY.auth.forgotPassword}
-          </button>
+          </Link>
         </div>
 
-        <Button type="primary" htmlType="submit" block size="large" className="mt-6">
+        <Button
+          type="primary"
+          htmlType="submit"
+          block
+          size="large"
+          loading={isSubmitting}
+          className="mt-6"
+        >
           {COPY.auth.loginAction}
         </Button>
       </Form>

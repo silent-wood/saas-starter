@@ -1,16 +1,18 @@
 import { Button, Layout, Space } from 'antd';
-import { Link, Outlet, useNavigate } from 'react-router';
-import { clearToken } from '@/utils/token';
+import { Link, Outlet } from 'react-router';
+import { useLogout } from '@/hooks/useLogout';
+import { useTenantRouting } from './useTenantRouting';
 
 const { Header, Content } = Layout;
 
 export function AuthLayout() {
-  const navigate = useNavigate();
-
-  const handleLogout = () => {
-    clearToken();
-    navigate('/login', { replace: true });
-  };
+  /**
+   * 多租户落点判断放在布局层而不是页面层：
+   * 它是「进入工作台之后」的前置条件，所有 /app 下的页面都该受同一套规则约束。
+   * 单租户会自动选定并静默通过，多租户且当前选择失效时才跳 /select-tenant。
+   */
+  useTenantRouting();
+  const logout = useLogout();
 
   return (
     <Layout className="min-h-screen!">
@@ -23,7 +25,7 @@ export function AuthLayout() {
             Resources
           </Link>
         </Space>
-        <Button onClick={handleLogout}>退出登录</Button>
+        <Button onClick={() => void logout()}>退出登录</Button>
       </Header>
       <Content className="p-6">
         <Outlet />

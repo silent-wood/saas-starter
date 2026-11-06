@@ -27,8 +27,6 @@ export const COPY = {
     tenantName: '团队名称',
     rememberMe: '记住我',
     forgotPassword: '忘记密码?',
-    /** 找回密码属方案 02，尚未实现，点击给明确反馈而不是静默无响应 */
-    forgotPasswordTodo: '找回密码功能开发中',
     loginAction: '登录',
     registerAction: '注册',
     loginExpired: '登录已过期，请重新登录',
