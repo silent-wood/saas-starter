@@ -1,7 +1,7 @@
 # 07 资源 CRUD + 回收站
 
-> 版本 v1.0 ｜ 更新 2026-11-06 ｜ 状态：已确认
-> 确认：李顺 · 2026-11-06 ｜ 变更：—
+> 版本 v1.1 ｜ 更新 2026-11-09 ｜ 状态：已确认
+> 确认：李顺 · 2026-11-06 ｜ 变更：v1.1 校验失败状态码由 400 修正为 422（对齐 `setup-app.ts` 实际装配的 `StandardSchemaValidationPipe`）
 > 关联：《技术方案设计》§4.6 权限渲染、§4.7 关键页面设计要点、《数据库设计与数据字典》§3.2 resources、《原型图》S3/S4/S5、《需求文档》§核心特性「业务域 CRUD」、`03-多租户行级隔离`、`06-RBAC与审计`、`_docs/前端开发规范.md`、`_docs/后端实施指南.md` §9
 >
 > **一页速览**
@@ -28,7 +28,7 @@
 | 编号 | 标准 |
 |------|------|
 | AC-01 | `GET /resources` 返回 `{ items, total, page, pageSize }`；不带参数时 `page=1`、`pageSize=20` |
-| AC-02 | `pageSize=101` 或 `page=0` → `400 VALIDATION_FAILED`（由 shared 的 `resourceQuerySchema` 拦截） |
+| AC-02 | `pageSize=101` 或 `page=0` → `422 VALIDATION_FAILED`（由 shared 的 `resourceQuerySchema` 拦截） |
 | AC-03 | `q` 按名称模糊匹配且大小写不敏感；`category` 等值匹配；两者可叠加，`total` 是过滤后的总数 |
 | AC-04 | 列表只返回 `deleted_at IS NULL` 的记录；软删除后的记录不在列表出现 |
 | AC-05 | `POST /resources` 成功返回 `201`；`created_by` 取自 access token 的 `sub`，`tenant_id` 由租户扩展注入（请求体不含这两个字段） |
@@ -123,14 +123,16 @@ flowchart TD
 |---|---------|------|--------|---------|
 | 1 | 未带 / 无效 access token | 401 | `UNAUTHORIZED` / `TOKEN_EXPIRED` | 走静默刷新，失败跳登录（沿用 01 方案） |
 | 2 | 缺 `X-Tenant-Id` | 403 | `TENANT_MISMATCH` | 切租户提示 / 回租户选择页 |
-| 3 | `name` 为空或超 100 字、`category` 为空或超 50 字、`description` 超 2000 字 | 400 | `VALIDATION_FAILED` | 表单对应字段红字（按 `details.path` 回填） |
-| 4 | `page` < 1 或 `pageSize` > 100 | 400 | `VALIDATION_FAILED` | 分页参数由组件控制，正常不触发；触发时 toast |
+| 3 | `name` 为空或超 100 字、`category` 为空或超 50 字、`description` 超 2000 字 | 422 | `VALIDATION_FAILED` | 表单对应字段红字（按 `details.path` 回填） |
+| 4 | `page` < 1 或 `pageSize` > 100 | 422 | `VALIDATION_FAILED` | 分页参数由组件控制，正常不触发；触发时 toast |
 | 5 | `member` 调用写接口或 `/trash` | 403 | `ROLE_DENIED` | 按钮本就隐藏；直接调接口时 toast「当前角色无权执行该操作」 |
 | 6 | 资源 id 不存在，或存在但不属当前租户 | 404 | `RESOURCE_NOT_FOUND` | 列表刷新 + toast「资源不存在或已被删除」 |
 | 7 | 恢复超 30 天窗口的记录 | 404 | `RESOURCE_NOT_FOUND` | toast「该资源已超过 30 天可恢复期」 |
 | 8 | 彻底删除 / 恢复一个已被并发删除的 id | 404 | `RESOURCE_NOT_FOUND` | 与 #6 同 |
 
 > 分支 6 是本方案的安全要点：**跨租户访问统一返回 404 而不是 403**。返回 403 等于确认「这个 id 真实存在于别的租户」，构成 id 枚举通道。实现上无需额外判断——租户扩展会把 `tenantId` 合并进 `where`，查不到自然落到 404。
+
+> **校验失败是 422 不是 400**：`apps/api/src/setup-app.ts` 的全局 `StandardSchemaValidationPipe` 构造参数里明确写了 `errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY`。`_docs/后端实施指南.md` §4.2 与附录 A 第 20 条记载的「400」是早期口径，以代码为准。前端一样按 `code === 'VALIDATION_FAILED'` 分支，不按状态码分支。
 
 ---
 
@@ -286,7 +288,7 @@ Controller 用 `@Query()` / `@Body()` 直接标 `z.infer` 类型，由 `Standard
 | 正常 | 3 | admin 删除 → 列表消失 → 回收站可见 → 恢复 → 列表复现 | 全链路 200 |
 | 正常 | 4 | admin 删除 → 彻底删除 → 回收站消失、详情 404 | 200 / 404 |
 | 正常 | 5 | `q` + `category` 叠加过滤 | `total` 等于交集条数 |
-| 边界 | 6 | `pageSize=100` 通过、`=101` 拒绝 | 200 / 400 |
+| 边界 | 6 | `pageSize=100` 通过、`=101` 拒绝 | 200 / 422 |
 | 边界 | 7 | `PATCH {}` | 200，字段不变 |
 | 边界 | 8 | 恢复 31 天前的记录（直接改库造数据） | 404 |
 | 异常 | 9 | `name` 为空串 | 400 `VALIDATION_FAILED` |
