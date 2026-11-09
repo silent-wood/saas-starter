@@ -291,8 +291,8 @@ Controller 用 `@Query()` / `@Body()` 直接标 `z.infer` 类型，由 `Standard
 | 边界 | 6 | `pageSize=100` 通过、`=101` 拒绝 | 200 / 422 |
 | 边界 | 7 | `PATCH {}` | 200，字段不变 |
 | 边界 | 8 | 恢复 31 天前的记录（直接改库造数据） | 404 |
-| 异常 | 9 | `name` 为空串 | 400 `VALIDATION_FAILED` |
-| 异常 | 10 | 不传 `category` | 400 `VALIDATION_FAILED` |
+| 异常 | 9 | `name` 为空串 | 422 `VALIDATION_FAILED` |
+| 异常 | 10 | 不传 `category` | 422 `VALIDATION_FAILED` |
 | 越权 | 11 | member → `POST /resources` | 403 `ROLE_DENIED` |
 | 越权 | 12 | member → `PATCH` / `DELETE` | 403 |
 | 越权 | 13 | member → `GET /trash` / `restore` / 彻底删除 | 403 |
