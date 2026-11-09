@@ -10,6 +10,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './modules/auth/auth.module.ts';
 import { TenantsModule } from './modules/tenants/tenants.module.ts';
+import { ResourcesModule } from './modules/resources/resources.module.ts';
 import { TenantGuard } from './common/guards/tenant.guard.ts';
 import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware.ts';
 import { AuditModule } from './modules/audit/audit.module.ts';
@@ -46,6 +47,7 @@ import { RolesGuard } from './common/guards/roles.guard.ts';
     AuthModule,
     TenantsModule,
     AuditModule,
+    ResourcesModule,
   ],
   providers: [
     // 全局守卫注册在这里，而**不是** app.useGlobalGuards(new JwtAuthGuard())：

@@ -58,6 +58,10 @@ model User {
   ownedTenants    Tenant[]     @relation("TenantOwner")
   emailTokens     EmailToken[]
   refreshTokens   RefreshToken[]
+  // 资源域反向关系：Resource 有两条外键指向 users，名称必须与那边一一对应
+  createdResources Resource[] @relation("ResourceCreator")
+  deletedResources Resource[] @relation("ResourceDeleter")
+
   @@map("users")
 }
 
@@ -239,3 +243,65 @@ model AuditLog {
   @@index([tenantId, action])
   @@map("audit_logs")
 }
+
+model Resource {
+  id          String    @id @default(cuid())
+  tenantId    String    @map("tenant_id") @db.VarChar(32)
+  name        String    @db.VarChar(100)
+  description String?   @db.Text
+  // 接口层必填（契约 min(1)），列仍留 NULL：历史数据 + M3 字典表迁移的余地
+  category    String?   @db.VarChar(50)
+  createdBy   String    @map("created_by") @db.VarChar(32)
+  // 原型 S5「删除人」；清理任务到期删除时为 NULL（前端显示「系统」）
+  deletedBy   String?   @map("deleted_by") @db.VarChar(32)
+  deletedAt   DateTime? @map("deleted_at") // NULL = 正常；非空 = 在回收站
+  purgedAt    DateTime? @map("purged_at") // 本期只建列不写，留给 M3 异步清理
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // 同一张 users 表两条外键，必须显式命名，否则 Prisma 报歧义（P1012）
+  creator User  @relation("ResourceCreator", fields: [createdBy], references: [id])
+  deleter User? @relation("ResourceDeleter", fields: [deletedBy], references: [id])
+
+  @@index([tenantId, deletedAt]) // 正常列表与回收站共用
+  @@index([tenantId, category]) // 分类过滤
+  @@map("resources")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 附：Prisma schema 语法备忘（纯注释，不参与建表，写模型时对照用）
+// ─────────────────────────────────────────────────────────────
+//
+// 一、@ 与 @@ 的分工
+//   单 @  —— 只作用于紧跟它的那个字段
+//   双 @@ —— 作用于整个 model（一张表），写在字段声明之后、模型块内部
+//
+//     字段级：@id  @default  @map  @db.*  @relation  @updatedAt  @unique
+//     表级：  @@id  @@unique  @@index  @@map
+//
+//   ⚠️ 没有 @index 这种写法：索引一律是表级 @@index([field])。
+//      单列主键用 @id，只有复合主键才用 @@id([a, b])。
+//
+// 二、三组「数据库侧映射」：只改库里的名字 / 类型，TS 与 Client 里仍是驼峰
+//   @map("created_by")   字段 createdBy  → 列 created_by
+//   @@map("resources")   model Resource  → 表 resources
+//   @db.VarChar(32)      String 的 PG 原生类型；不写则默认 TEXT
+//
+// 三、本项目用到的其余写法
+//   String?              可空（SQL 的 NULL）；不带 ? 即 NOT NULL
+//   @default(cuid())     应用侧生成 25 位 id，不依赖数据库序列
+//   @updatedAt           每次写入由 Prisma Client 刷新，不建 DB trigger
+//   @relation(...)       fields 是本表列，references 是对方列；
+//                        同一张表被引用两次时（Resource.creator / deleter）
+//                        必须给关系起名，且两侧名字要完全一致
+//   onDelete: Cascade    只用于同域父子关系；跨域外键一律不级联（建模纪律 5）
+//   Unsupported(...)     Prisma 不支持的类型（如 vector），靠手写 migration SQL 建列
+//
+// 四、顺序问题
+//   1. 顶层块（generator / datasource / model / enum）的先后不影响语义，
+//      前向引用合法：User 里可以先写还没定义的 Resource[]。
+//      prisma format 只对齐空白、不重排块顺序，所以顺序靠人约定。
+//   2. 列顺序是例外：CREATE TABLE 的列按【模型内字段声明顺序】排列，
+//      新增字段写在模型末尾，与 PG 的 ADD COLUMN 只能加在末尾保持一致。
+//   3. 本文件按域分节（认证 / AI / 审计 / 资源），新域的模型追加到文件末尾，
+//      让 diff 集中在尾部，减少合并冲突。
