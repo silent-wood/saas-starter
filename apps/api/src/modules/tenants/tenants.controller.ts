@@ -1,5 +1,10 @@
-import { Controller, Get, Req } from '@nestjs/common';
-import type { TenantListResult } from '@saas/shared';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req } from '@nestjs/common';
+import {
+  createTenantInputSchema,
+  type CreateTenantInput,
+  type CreateTenantResult,
+  type TenantListResult,
+} from '@saas/shared';
 import type { AuthenticatedRequest } from '../../common/types/authenticated-request.ts';
 import { TenantsService } from './tenants.service.ts';
 import { SkipTenant } from '../../common/decorators/skip-tenant.decorator.ts';
@@ -7,12 +12,17 @@ import { SkipTenant } from '../../common/decorators/skip-tenant.decorator.ts';
 /**
  * 租户 HTTP 入口。
  *
- * 本期的唯一路由：GET /tenants → 当前用户所属租户列表。
+ * - `GET /tenants`  当前用户所属租户列表
+ * - `POST /tenants` 创建团队（创建者即 owner）
+ *
  * 路由前缀 /api/v1 是全局 prefix，这里 @Controller('tenants') 最终就是 /api/v1/tenants。
  *
- * 鉴权：这里【不】加 @Public()，所以走全局 JwtAuthGuard。
- *   守卫校验 access token 后会把 payload 里的 sub（用户 id）写进 req.user，
- *   controller 直接拿 req.user.sub 当「当前用户 id」，不信任任何客户端传参。
+ * 鉴权：两个接口都【不】加 @Public()，走全局 JwtAuthGuard。
+ *  守卫校验 access token 后会把 payload 里的 sub 写进 req.user，
+ *  controller 直接拿 req.user.sub 当「当前用户 id」，不信任任何客户端传参。
+ *
+ * 两个接口都必须 @SkipTenant()：它们都发生在「选定租户之前 / 之外」——
+ * 列出租户时尚无 X-Tenant-Id 可选；创建租户时目标租户还不存在。
  */
 @Controller('tenants')
 export class TenantsController {
@@ -40,5 +50,23 @@ export class TenantsController {
     //（类型 AuthenticatedRequest 在 common/types 里定义，含 { sub, type }）
     const items = await this.tenantsService.listByUser(req.user.sub);
     return { items };
+  }
+
+  /**
+   * 创建团队。用于「用户被移出所有团队后自救」这条链路：
+   * 没有这个接口，用户会在 0 个团队的状态里无处可去。
+   *
+   * 201 而非 200：产生了新资源。Nest 对 POST 默认就是 201，这里显式声明，
+   * 避免以后有人把 @HttpCode 改到别的值而无从察觉。
+   */
+  @Post()
+  @SkipTenant()
+  @HttpCode(HttpStatus.CREATED)
+  async create(
+    @Body({ schema: createTenantInputSchema }) body: CreateTenantInput,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<CreateTenantResult> {
+    // ownerId 只取 token 里的 sub，请求体里没有这个字段（契约层就不给客户端这个念想）
+    return this.tenantsService.create(req.user.sub, body.name);
   }
 }

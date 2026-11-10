@@ -40,3 +40,34 @@ export const tenantListResultSchema = z.object({
 });
 
 export type TenantListResult = z.infer<typeof tenantListResultSchema>;
+
+// ─────────────────────────────────────────────────────────────
+// 创建租户
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 创建租户入参，用于 `POST /tenants`。
+ *
+ * **不含 ownerId**：创建者恒为当前登录用户（access token 的 sub），由后端注入。
+ * 让客户端声明 owner 等于可以替别人建团队，是越权写入。
+ *
+ * **团队名不要求全局唯一**：同名团队在现实中很常见（"XX 公司"），强行唯一会让起名
+ * 变成占坑游戏，还会通过"名字被占用"泄露其他团队的存在。识别团队靠 id 而不是名字。
+ *
+ * 上限 30 与 `tenants.name`（VarChar 100）不冲突，取更严的那个避免超长名撑破侧栏与下拉。
+ */
+export const createTenantInputSchema = z.object({
+  name: z.string().trim().min(2, '团队名称至少 2 个字符').max(30, '团队名称不超过 30 个字符'),
+});
+
+export type CreateTenantInput = z.infer<typeof createTenantInputSchema>;
+
+/**
+ * `POST /tenants` 成功响应（201）：直接返回新团队的列表项形状。
+ *
+ * 复用 `TenantListItem` 而不是另立「创建结果」类型，是为了让前端能原样追加进
+ * `GET /tenants` 的列表缓存，不用事后重拉一次。
+ */
+export const createTenantResultSchema = tenantListItemSchema;
+
+export type CreateTenantResult = z.infer<typeof createTenantResultSchema>;
