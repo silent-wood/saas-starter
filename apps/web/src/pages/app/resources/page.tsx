@@ -10,6 +10,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import { ProTable } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { App, Button, Empty, Typography } from 'antd';
+import { RESOURCE_CATEGORY_OPTIONS } from '@saas/shared';
 import type { ResourceItem } from '@saas/shared';
 import dayjs from 'dayjs';
 import { useEffect, useRef, useState } from 'react';
@@ -18,6 +19,15 @@ import { usePermission } from '@/hooks/usePermission';
 import { errorText } from '@/shared/api/errorText';
 import { resourceApi } from '@/shared/api/resource';
 import { CreateModal } from './CreateModal';
+
+/**
+ * 分类列同时承担三件事：单元格渲染、搜索表单项、筛选参数取值。
+ * 交给 ProTable 的 `valueEnum` 一处声明，避免「列表显示中文、筛选发中文」的不一致
+ * （筛选必须发码，后端按 `resources.category` 等值匹配）。
+ */
+const CATEGORY_VALUE_ENUM = Object.fromEntries(
+  RESOURCE_CATEGORY_OPTIONS.map((option) => [option.value, { text: option.label }]),
+);
 
 export function ResourceListPage() {
   const actionRef = useRef<ActionType>(null);
@@ -74,7 +84,15 @@ export function ResourceListPage() {
       ),
       search: { transform: (value: string) => ({ q: value }) },
     },
-    { title: '分类', dataIndex: 'category', ellipsis: true },
+    {
+      title: '分类',
+      dataIndex: 'category',
+      // valueEnum 让搜索表单变成下拉、单元格自动取中文，且筛选值发的是码
+      valueType: 'select',
+      valueEnum: CATEGORY_VALUE_ENUM,
+      width: 110,
+      ellipsis: true,
+    },
     {
       title: '创建人',
       dataIndex: 'createdByName',

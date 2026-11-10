@@ -8,6 +8,7 @@ import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { PageContainer, ProDescriptions } from '@ant-design/pro-components';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { App, Button, Result, Spin } from 'antd';
+import { resourceCategoryLabel } from '@saas/shared';
 import type { ResourceItem } from '@saas/shared';
 import dayjs from 'dayjs';
 import { useState } from 'react';
@@ -97,7 +98,7 @@ export default function ResourceDetail() {
             title: '分类',
             dataIndex: 'category',
             span: 1,
-            render: (_, record) => record.category ?? '-',
+            render: (_, record) => resourceCategoryLabel(record.category),
           },
           {
             title: '创建人',

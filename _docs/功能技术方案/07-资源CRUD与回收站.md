@@ -1,12 +1,12 @@
 # 07 资源 CRUD + 回收站
 
-> 版本 v1.3 ｜ 更新 2026-11-09 ｜ 状态：已确认
-> 确认：李顺 · 2026-11-06 ｜ 变更：v1.1 校验失败状态码由 400 修正为 422（对齐 `setup-app.ts` 实际装配的 `StandardSchemaValidationPipe`）；v1.2 前端实现期拍板——表单改用 pro-components `ModalForm`（组件优先 pro-components 的既定偏好），当前租户角色从 tenants 列表经 `usePermission` 派生（tenant store 实际无 `role` 字段）；v1.3 §1.3 的「侧边栏 ProLayout 改造」经用户拍板提前落地，布局依据 `_docs/原型图.html` 应用内线框（Ardot 高保真稿待设计侧导出后校准）
+> 版本 v1.5 ｜ 更新 2026-11-10 ｜ 状态：已确认
+> 确认：李顺 · 2026-11-06 ｜ 变更：v1.1 校验失败状态码由 400 修正为 422（对齐 `setup-app.ts` 实际装配的 `StandardSchemaValidationPipe`）；v1.2 前端实现期拍板——表单改用 pro-components `ModalForm`（组件优先 pro-components 的既定偏好），当前租户角色从 tenants 列表经 `usePermission` 派生（tenant store 实际无 `role` 字段）；v1.3 §1.3 的「侧边栏 ProLayout 改造」经用户拍板提前落地，布局依据 `_docs/原型图.html` 应用内线框（Ardot 高保真稿待设计侧导出后校准）；v1.4 四项遗留决策拍板（D-01~D-04）——分类由自由文本收紧为固定枚举 + 下拉，取值照搬市场文件类型口径 `doc / image / video / audio / other`（对齐阿里云盘文件接口 `Category` 与百度网盘企业版分类，码表见 `packages/shared/src/resource-categories.ts`）、`name` 上限 100→50、`description` 上限 2000→200、详情页的编辑/删除入口本期不动；v1.5 修「编辑后点新建，表单残留上一条内容」——`ModalForm` 的 `initialValues` 只在挂载时灌值且被 store 旧值覆盖，改为弹窗每次打开时 `resetFields()` 后按模式回填（AC-21）
 > 关联：《技术方案设计》§4.6 权限渲染、§4.7 关键页面设计要点、《数据库设计与数据字典》§3.2 resources、《原型图》S3/S4/S5、《需求文档》§核心特性「业务域 CRUD」、`03-多租户行级隔离`、`06-RBAC与审计`、`_docs/前端开发规范.md`、`_docs/后端实施指南.md` §9
 >
 > **一页速览**
 > 接口：`GET|POST /resources`、`GET|PATCH|DELETE /resources/:id`、`GET /trash`、`POST /trash/:id/restore`、`DELETE /trash/:id`
-> 前端落点：`pages/Resource/{index,Detail}`、`pages/Trash/`、`shared/api/resource.ts`
+> 前端落点：`pages/app/resources/{page.tsx,CreateModal.tsx,[id]/page.tsx}`、`pages/app/trash/page.tsx`、`shared/api/resource.ts`、`packages/shared/src/resource-categories.ts`（分类码表）
 > 后端落点：`src/modules/resources/`、`prisma/schema.prisma`、`prisma/tenant.extension.ts`
 > 关键异常：`RESOURCE_NOT_FOUND` / `ROLE_DENIED` / `VALIDATION_FAILED` / `TENANT_MISMATCH`
 
@@ -44,12 +44,17 @@
 | AC-15 | `member` 调用 `/trash` 下任一接口 → `403 ROLE_DENIED` |
 | AC-16 | 新建 / 更新 / 删除 / 恢复 / 彻底删除各落一条 `audit_logs`，`action` 分别为 `resource.create` / `resource.update` / `resource.delete` / `resource.restore` / `resource.purge` |
 | AC-17 | 全部既有单测通过；新增 `resources.service.spec.ts`、`tenant.extension.spec.ts`（补 `Resource` 用例）通过 |
+| AC-18 | `category` 取值限定 `RESOURCE_CATEGORIES`（`doc` / `image` / `video` / `audio` / `other`，对齐阿里云盘文件接口的 `Category` 取值），非法值 → `422 VALIDATION_FAILED`；`GET /resources?category=` 同样按枚举校验 |
+| AC-19 | `name` 超过 50 字符、`description` 超过 200 字符 → `422 VALIDATION_FAILED`（D-02 / D-03）；前端表单同步拦截，且 `showCount` 按同一上限显示 |
+| AC-20 | 接口返回的分类是**码**（如 `doc`），前端经 `resourceCategoryLabel()` 映射为「文档」；枚举收紧前的历史自由文本原样展示，不报错 |
+| AC-21 | 新建 / 编辑复用同一弹窗，但**每次打开都重置表单**：编辑某条 → 取消 → 点「新建资源」时三个字段全空；编辑另一条时展示的是新记录的字段（`CreateModal.test.tsx` 钉住） |
 
 ### 1.3 范围外
 
 - **附件能力**（上传 / 下载 / 列表「附件」列 / 详情附件区 / 删除级联）：`files` 表属 M3，本期返回恒 0 的假字段只会制造后续返工。原型 S3 的「附件」列本期**隐藏**
 - **到期自动清理**（`cleanup` 队列每日扫描物理删除）：M3 引入 BullMQ 后落地。本期只有用户主动「彻底删除」这一条物理删除路径
-- **分类字典化**：本期分类是自由文本，等值过滤；M3 租户设置里固化为字典后再换 `z.enum` + 下拉
+- **分类字典化**：~~本期分类是自由文本~~ → v1.4 已提前落地为**固定枚举 + 下拉**（D-01）。分类收敛在代码里而非字典表：码表 `packages/shared/src/resource-categories.ts`，改分类需发版。租户自定义分类仍属 M3（届时把枚举换成 `tenant_categories` 表 + 迁移脚本）
+- **详情页编辑 / 删除入口**：本期保持现状不动（D-04）。详情页已有入口复用同一 `CreateModal` 与软删接口，与列表页行为一致，没有独立改造需求
 - **列表排序切换**（按更新时间 / 名称 / 附件数）：固定 `created_at DESC`
 - **批量操作**（批量删除 / 批量恢复）：原型未定义交互
 - **并发编辑乐观锁**：不加 `version` 字段，`updated_at` 仅供展示
@@ -123,7 +128,7 @@ flowchart TD
 |---|---------|------|--------|---------|
 | 1 | 未带 / 无效 access token | 401 | `UNAUTHORIZED` / `TOKEN_EXPIRED` | 走静默刷新，失败跳登录（沿用 01 方案） |
 | 2 | 缺 `X-Tenant-Id` | 403 | `TENANT_MISMATCH` | 切租户提示 / 回租户选择页 |
-| 3 | `name` 为空或超 100 字、`category` 为空或超 50 字、`description` 超 2000 字 | 422 | `VALIDATION_FAILED` | 表单对应字段红字（按 `details.path` 回填） |
+| 3 | `name` 为空或超 50 字、`category` 为空或不在枚举内、`description` 超 200 字 | 422 | `VALIDATION_FAILED` | 表单对应字段红字（按 `details.path` 回填） |
 | 4 | `page` < 1 或 `pageSize` > 100 | 422 | `VALIDATION_FAILED` | 分页参数由组件控制，正常不触发；触发时 toast |
 | 5 | `member` 调用写接口或 `/trash` | 403 | `ROLE_DENIED` | 按钮本就隐藏；直接调接口时 toast「当前角色无权执行该操作」 |
 | 6 | 资源 id 不存在，或存在但不属当前租户 | 404 | `RESOURCE_NOT_FOUND` | 列表刷新 + toast「资源不存在或已被删除」 |
@@ -163,6 +168,10 @@ flowchart TD
 | `pages/Resource/{index,Detail}.test.tsx`（新增） | 至少覆盖：member 不渲染新建按钮、删除确认后调用接口、空态渲染 |
 
 **权限渲染口径**：`member` 不渲染「新建资源」按钮，行内操作列只剩「查看」；回收站入口对 `member` 不渲染。前端隐藏只是体验优化，**真正的拦截在后端**——AC-06 / AC-15 断言的就是绕过前端直接调接口的情形。
+
+> 注（v1.4）：前端落点已随约定式路由迁移，上表路径按当前结构对应为 `pages/app/resources/{page.tsx,CreateModal.tsx,[id]/page.tsx}`、`pages/app/trash/page.tsx`；`CreateModal` 的分类字段已是 `ProFormSelect`（选项来自 `RESOURCE_CATEGORY_OPTIONS`），不再是 `ProFormText`。
+>
+> 注（v1.5）：`CreateModal` 不靠 `initialValues` 承载初值。rc-field-form 挂载时执行 `merge(initialValues, store)`，store 里已有的值会盖掉初值，而 `form` 实例由 `CreateModal` 持有、弹窗关闭再打开不换实例（`destroyOnHidden` 只销毁字段 DOM，不销毁 store）；因此「编辑 → 取消 → 新建」会残留上一条记录。现改为 `useLayoutEffect` 监听 `open`：先 `resetFields()`（清值 + 清上一次的校验红字），编辑模式再 `setFieldsValue()` 回填，且不依赖 `record` 对象引用（避免父组件重渲染把用户输入重置掉）。
 
 ### 3.3 错误码 → 文案映射
 
@@ -279,6 +288,8 @@ Controller 用 `@Query()` / `@Body()` 直接标 `z.infer` 类型，由 `Standard
 | 彻底删除 | 先 `findFirst` 再 `delete`；`findFirst` 为 null 时抛 404 且**不调用** `delete` |
 
 `tenant.extension.spec.ts`（补）：`model='Resource'` 且有上下文时 create 注入 `tenantId`、findMany 合并 `where`；无上下文时原样透传。
+
+`CreateModal.test.tsx`（web）：编辑模式回填记录值 → 取消 → 以新建模式打开，名称 / 分类 / 描述均为空（AC-21）。
 
 ### 5.2 e2e 用例矩阵
 

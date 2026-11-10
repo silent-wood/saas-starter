@@ -19,7 +19,8 @@ describe('ResourcesService', () => {
     id: 'r1',
     name: '需求清单',
     description: null,
-    category: '文档',
+    // 分类在库里是码（并非展示文案），码表见 shared 的 resource-categories.ts
+    category: 'doc',
     createdBy: 'u1',
     createdAt: new Date('2026-11-01T00:00:00Z'),
     updatedAt: new Date('2026-11-02T00:00:00Z'),

@@ -249,7 +249,9 @@ model Resource {
   tenantId    String    @map("tenant_id") @db.VarChar(32)
   name        String    @db.VarChar(100)
   description String?   @db.Text
-  // 接口层必填（契约 min(1)），列仍留 NULL：历史数据 + M3 字典表迁移的余地
+  // 存**分类码**（doc / image / video / audio / other），不是展示文案 ——
+  // 码表在 packages/shared/src/resource-categories.ts。列宽 50 远够放码；
+  // 仍留 NULL：枚举收紧之前落库的自由文本要能读出来展示（resourceCategoryLabel 兜底）
   category    String?   @db.VarChar(50)
   createdBy   String    @map("created_by") @db.VarChar(32)
   // 原型 S5「删除人」；清理任务到期删除时为 NULL（前端显示「系统」）

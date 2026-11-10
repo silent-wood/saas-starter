@@ -27,7 +27,7 @@ const item = {
   id: 'r_1',
   name: '产品需求清单 v3',
   description: '本季度需求汇总',
-  category: '文档',
+  category: 'doc',
   createdBy: 'u_1',
   createdByName: '李顺',
   createdAt: '2026-11-09T00:00:00.000Z',

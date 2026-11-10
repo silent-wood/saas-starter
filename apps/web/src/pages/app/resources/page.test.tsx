@@ -28,7 +28,7 @@ const item = {
   id: 'r_1',
   name: '产品需求清单 v3',
   description: null,
-  category: '文档',
+  category: 'doc',
   createdBy: 'u_1',
   createdByName: '李顺',
   createdAt: '2026-11-09T00:00:00.000Z',
@@ -74,6 +74,8 @@ describe('ResourceListPage', () => {
     renderPage();
 
     expect(await screen.findByText('产品需求清单 v3')).toBeInTheDocument();
+    // 接口返回的是分类码，单元格经 valueEnum 映射成中文
+    expect(screen.getByText('文档')).toBeInTheDocument();
     expect(screen.queryByText('新建资源')).not.toBeInTheDocument();
     expect(screen.getByText('查看')).toBeInTheDocument();
     expect(screen.queryByText('编辑')).not.toBeInTheDocument();

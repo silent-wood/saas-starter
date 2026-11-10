@@ -17,7 +17,7 @@ const item = (n: number): ResourceItem =>
   ({
     id: `r_${n}`,
     name: `需求文档 ${n}`,
-    category: '文档',
+    category: 'doc',
     createdAt: '2026-11-08T10:00:00.000Z',
     updatedAt: '2026-11-09T08:30:00.000Z',
   }) as ResourceItem;

@@ -12,6 +12,7 @@
  */
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Alert, Button, Card, Empty, List, Typography } from 'antd';
+import { resourceCategoryLabel } from '@saas/shared';
 import type { ResourceItem } from '@saas/shared';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -127,7 +128,12 @@ function Dashboard() {
                     }
                     description={
                       <Typography.Text type="secondary">
-                        {[item.category, relativeTime(item.updatedAt)].filter(Boolean).join(' · ')}
+                        {[
+                          item.category ? resourceCategoryLabel(item.category) : null,
+                          relativeTime(item.updatedAt),
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
                       </Typography.Text>
                     }
                   />

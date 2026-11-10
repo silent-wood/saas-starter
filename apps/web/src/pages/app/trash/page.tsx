@@ -9,7 +9,7 @@ import { ProTable } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { useQueryClient } from '@tanstack/react-query';
 import { Alert, App, Button, Tag } from 'antd';
-import { ERROR_CODES } from '@saas/shared';
+import { ERROR_CODES, resourceCategoryLabel } from '@saas/shared';
 import type { TrashItem } from '@saas/shared';
 import dayjs from 'dayjs';
 import { useRef } from 'react';
@@ -81,7 +81,8 @@ export function TrashPage() {
       dataIndex: 'category',
       ellipsis: true,
       hideInSearch: true,
-      render: (_, record) => record.category ?? '-',
+      // 库里存的是分类码，展示必须走字典映射（含历史自由文本的兜底）
+      render: (_, record) => resourceCategoryLabel(record.category),
     },
     {
       title: '删除人',

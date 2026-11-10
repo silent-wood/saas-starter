@@ -19,6 +19,7 @@ export * from './errors.js';
 export * from './audit-actions.js';
 export * from './permissions.js';
 export * from './roles.js';
+export * from './resource-categories.js';
 export * from './contracts/auth.js';
 export * from './contracts/envelope.js';
 export * from './contracts/resource.js';

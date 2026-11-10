@@ -3,6 +3,7 @@
 // 默认导入在消费方（尤其 `moduleResolution: bundler`）拿不到 `z` 成员，
 // 会让 `z.infer` 整体退化成 any，且被 skipLibCheck 静默吞掉。
 import * as z from 'zod';
+import { RESOURCE_CATEGORIES } from '../resource-categories.js';
 
 // ─────────────────────────────────────────────────────────────
 // 入参契约
@@ -22,22 +23,24 @@ import * as z from 'zod';
  * 字段落库映射（详见 `_docs/数据库设计与数据字典.md` §3.2）：
  * - `name`        → `resources.name`（必填，列表主展示列）
  * - `description` → `resources.description`（可空，DB 为 TEXT）
- * - `category`    → `resources.category`（**必填**，列表过滤维度；DB 列仍留 NULL，
- *   为历史数据与 M3 字典表迁移留余地）
+ * - `category`    → `resources.category`（**必填枚举码**，见 `resource-categories.ts`；
+ *   DB 列仍留 NULL，为历史数据留余地）
  */
 export const resourceCreateSchema = z.object({
-  /** 资源名称，列表主展示列；上限 100 与 DB 列宽一致，避免"能提交但落库失败" */
-  name: z.string().trim().min(1, '请输入资源名称').max(100, '资源名称不超过 100 个字符'),
-  /** 描述，长文本场景；上限 2000 防止误贴大段内容撑爆单行 */
-  description: z.string().max(2000, '描述不超过 2000 个字符').optional(),
+  /** 资源名称，列表主展示列；上限 50（D-02 决策）——列表列宽下超出的部分必然被省略 */
+  name: z.string().trim().min(1, '请输入资源名称').max(50, '资源名称不超过 50 个字符'),
+  /** 描述，上限 200（D-03 决策），与详情页卡片的高度相匹配 */
+  description: z.string().max(200, '描述不超过 200 个字符').optional(),
   /**
-   * 分类，**必填**（原型图 S3「分类必选」）。分类是列表过滤维度，允许为空会让
+   * 分类，**必填枚举**（原型图 S3「分类必选」）。分类是列表过滤维度，允许为空会让
    * 过滤结果里堆一批"未分类"，使该维度失去意义。
    *
-   * **不做枚举校验**：一期分类是自由文本，过滤时按等值匹配；等业务侧把分类固化成
-   * 字典表（M3 租户设置）再收紧为 `z.enum`，届时前端输入框同步换成下拉。
+   * **收紧为 `z.enum` 而不是自由文本**（D-01 决策）：自由文本下「文档」「文档 」
+   * 「文档资料」是三个分类，过滤结果永远筛不全。取值来自 `RESOURCE_CATEGORIES`，
+   * 前端下拉与这里同源。错误文案统一成「请选择分类」——枚举失败时 zod 默认会回
+   * 一长串可选值，对表单红字来说是噪音。
    */
-  category: z.string().trim().min(1, '请选择分类').max(50, '分类不超过 50 个字符'),
+  category: z.enum(RESOURCE_CATEGORIES, { error: '请选择分类' }),
 });
 
 export type ResourceCreateInput = z.infer<typeof resourceCreateSchema>;
@@ -73,8 +76,8 @@ export const resourceQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   /** 关键字，按名称模糊匹配（大小写不敏感）；空串视同不传 */
   q: z.string().max(100).optional(),
-  /** 分类等值过滤，需与 `resources.category` 完全一致；不做模糊 */
-  category: z.string().max(50).optional(),
+  /** 分类等值过滤，取值同创建契约的枚举（不含历史自由文本值）；不做模糊 */
+  category: z.enum(RESOURCE_CATEGORIES, { error: '分类取值不合法' }).optional(),
 });
 
 export type ResourceQuery = z.infer<typeof resourceQuerySchema>;
@@ -104,7 +107,14 @@ export const resourceItemSchema = z.object({
   name: z.string(),
   /** `resources.description`，未填为 null */
   description: z.string().nullable(),
-  /** `resources.category`；接口层必填，故正常数据恒有值，仅历史数据可能为 null */
+  /**
+   * `resources.category`：分类**码**（如 `doc`），不是展示文案。
+   *
+   * 出参刻意保持 `string`（不收紧成枚举）而写入端是枚举：收紧上游、放宽下游，
+   * 这样枚举收紧之前落库的历史自由文本仍能正常读出并展示（`resourceCategoryLabel`
+   * 有兜底），不会让一台老数据的记录把整个列表的解析打挂。展示一律走
+   * `resourceCategoryLabel()`，不要在组件里手写映射。
+   */
   category: z.string().nullable(),
   /** 创建人 id（`resources.created_by`）。DB 为 NOT NULL，此处仍给 nullable 以容忍脏数据 */
   createdBy: z.string().nullable(),
