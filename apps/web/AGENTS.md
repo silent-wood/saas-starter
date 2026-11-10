@@ -29,6 +29,6 @@ Vite + React 19 前端 SPA（包名 `web`）。通用约定见仓库根 `AGENTS.
 ## 状态与 UI 约定
 
 - 服务端状态一律 TanStack Query，客户端状态用 Zustand；不要把接口数据复制进 Zustand
-- UI 基于 antd 6 + Tailwind 4：优先复用 antd 组件与设计变量，不自造视觉原语
+- UI 基于 antd 6 + Tailwind 4：**组件优先使用 ProComponents**（ProLayout / ProTable / ModalForm / PageContainer 等），antd 基础组件作补充，不自造已有能力的视觉原语
 - 表单用 React Hook Form + zod；schema 已在 `@saas/shared` 定义的直接复用，不重复声明
 - 组件先满足当前页面需要；出现第二处复用再提取到 `src/components/`

@@ -1,7 +1,7 @@
 # 07 资源 CRUD + 回收站
 
-> 版本 v1.1 ｜ 更新 2026-11-09 ｜ 状态：已确认
-> 确认：李顺 · 2026-11-06 ｜ 变更：v1.1 校验失败状态码由 400 修正为 422（对齐 `setup-app.ts` 实际装配的 `StandardSchemaValidationPipe`）
+> 版本 v1.3 ｜ 更新 2026-11-09 ｜ 状态：已确认
+> 确认：李顺 · 2026-11-06 ｜ 变更：v1.1 校验失败状态码由 400 修正为 422（对齐 `setup-app.ts` 实际装配的 `StandardSchemaValidationPipe`）；v1.2 前端实现期拍板——表单改用 pro-components `ModalForm`（组件优先 pro-components 的既定偏好），当前租户角色从 tenants 列表经 `usePermission` 派生（tenant store 实际无 `role` 字段）；v1.3 §1.3 的「侧边栏 ProLayout 改造」经用户拍板提前落地，布局依据 `_docs/原型图.html` 应用内线框（Ardot 高保真稿待设计侧导出后校准）
 > 关联：《技术方案设计》§4.6 权限渲染、§4.7 关键页面设计要点、《数据库设计与数据字典》§3.2 resources、《原型图》S3/S4/S5、《需求文档》§核心特性「业务域 CRUD」、`03-多租户行级隔离`、`06-RBAC与审计`、`_docs/前端开发规范.md`、`_docs/后端实施指南.md` §9
 >
 > **一页速览**
@@ -146,7 +146,7 @@ flowchart TD
 | `app/router.tsx` | 已有 `/app/resources` 路由（`lazy` + `ErrorBoundary` 包裹），无详情页与回收站路由 |
 | `app/AuthLayout.tsx` | 顶部两个链接（Dashboard / Resources），无侧边栏、无权限过滤 |
 | `shared/api/client.ts` | 已具备 401 静默刷新、`X-Tenant-Id` 注入、统一错误码解析 |
-| `stores/tenant.ts` | 已持 `currentTenantId` / `role`，可直接供权限判断 |
+| `stores/tenant.ts` | 已持 `currentTenantId` 与 `tenants` 列表；角色在列表项上，由 `usePermission` 派生，见 §3.2 |
 
 ### 3.2 待改动（文件级）
 
@@ -154,7 +154,8 @@ flowchart TD
 |------|------|
 | `shared/api/resource.ts`（新增） | 7 个接口的薄封装，返回 `Promise<ResourceItem>` / `ResourceListResult` 等，类型全部来自 `@saas/shared` |
 | `pages/Resource/index.tsx`（重写） | AntD `Table` + 搜索框 + 分类过滤 + 分页；列：名称 / 分类 / 创建人 / 更新时间 / 操作（编辑、删除）；空态插画 + 「创建第一个资源」引导 |
-| `pages/Resource/CreateModal.tsx`（新增） | 新建 / 编辑复用同一弹窗，RHF + `zodResolver(resourceCreateSchema)`；编辑模式用 `resourceUpdateSchema` |
+| `pages/Resource/CreateModal.tsx`（新增） | 新建 / 编辑复用同一弹窗，pro-components `ModalForm`（ProFormText / ProFormTextArea），校验规则与 `resourceCreateSchema` / `resourceUpdateSchema` 同源；422 `details.path` 回填字段错误 |
+| `hooks/usePermission.ts`（新增） | `useCurrentRole` 从 tenant store 的 `tenants` 列表按 `currentTenantId` 派生当前角色；`usePermission().can(permission)` 是 shared `canDo` 的 hook 封装 |
 | `pages/Resource/Detail.tsx`（新增） | 详情卡片：名称、分类、创建人、创建/更新时间、描述；右上有编辑 / 删除 |
 | `pages/Trash/index.tsx`（新增） | 顶部 30 天保留提示条；列：名称 / 删除人 / 删除时间 / 剩余天数 / 操作（恢复、彻底删除）；剩余 < 7 天标橙 |
 | `app/router.tsx` | 追加 `/app/resources/:id`、`/app/trash`，均走 `lazy` + `ErrorBoundary` |
