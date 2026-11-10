@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
-import { Navigate } from 'react-router';
+import { Navigate, useLocation } from 'react-router';
 import { Spin } from 'antd';
 import { useAuthStore } from '@/stores/auth';
 import { ensureSession } from '@/app/session';
@@ -12,6 +12,7 @@ import { ensureSession } from '@/app/session';
  */
 export function RequireAuth({ children }: { children: ReactNode }) {
   const status = useAuthStore((s) => s.status);
+  const location = useLocation();
 
   useEffect(() => {
     void ensureSession();
@@ -22,7 +23,11 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     return <Spin tip="正在恢复登录状态……" fullscreen />;
   }
 
-  if (status !== 'authenticated') return <Navigate to="/login" replace />;
+  if (status !== 'authenticated') {
+    // 带上原路径，登录后回跳（此前固定回 /app，深链一登录就丢）
+    const returnTo = location.pathname + location.search;
+    return <Navigate to={`/login?returnTo=${encodeURIComponent(returnTo)}`} replace />;
+  }
 
   return <>{children}</>;
 }

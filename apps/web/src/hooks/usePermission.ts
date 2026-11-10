@@ -6,7 +6,9 @@
  * 不扩展 store —— 单一天然数据源，切换租户时角色自动跟随，无双重状态。
  *
  * useTenantRouting 在 AuthLayout 层已把 tenants 写入 store，/app 下所有页面
- * 都能拿到；tenants 未就绪时 role 为 null，can() 返回 false（先隐藏入口）。
+ * 都能拿到。注意 `ready` 与 `can()` 的区别：列表未就绪时 role 为 null、can() 恒为
+ * false，这适合「先隐藏菜单入口」；一旦拿它拦路由，刷新瞬间就会把有权限的用户
+ * 判成 403 —— 所以拦路由必须同时判断 ready。
  */
 import { useMemo } from 'react';
 import type { Permission, Role } from '@saas/shared';
@@ -21,11 +23,14 @@ export function useCurrentRole(): Role | null {
 
 export function usePermission() {
   const role = useCurrentRole();
+  const ready = useTenantStore((s) => s.tenantsLoaded);
   return useMemo(
     () => ({
       role,
+      /** 角色是否已可判定。false 表示租户列表还没落地，此时 can() 的结果无意义 */
+      ready,
       can: (permission: Permission) => role !== null && canDo(role, permission),
     }),
-    [role],
+    [role, ready],
   );
 }

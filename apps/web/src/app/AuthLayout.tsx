@@ -10,26 +10,15 @@
  * 成员管理 / AI 助手 / 订阅支付 / 邀请中心 / 设置为占位页（PlaceholderPage），
  * 对应功能落地时替换路由元素即可。
  */
-import {
-  AppstoreOutlined,
-  BellOutlined,
-  DatabaseOutlined,
-  DeleteOutlined,
-  LogoutOutlined,
-  PayCircleOutlined,
-  RobotOutlined,
-  SearchOutlined,
-  SettingOutlined,
-  TeamOutlined,
-  UserAddOutlined,
-} from '@ant-design/icons';
+import { BellOutlined, LogoutOutlined, SearchOutlined } from '@ant-design/icons';
 import { ProLayout } from '@ant-design/pro-components';
-import type { MenuDataItem } from '@ant-design/pro-components';
 import { Avatar, Badge, Breadcrumb, Dropdown, Input, Space, Tooltip } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { matchPath, Outlet, useLocation, useNavigate } from 'react-router';
+import { Outlet, useLocation, useNavigate } from 'react-router';
 import logoUrl from '@/assets/imgs/logo.png';
+import { findRouteNode, menuFromTree, menuOwner } from '@/app/routes/menu';
+import { appRoot, routeTree } from '@/app/routes/scan';
 import { useLogout } from '@/hooks/useLogout';
 import { usePermission } from '@/hooks/usePermission';
 import { useAuthStore } from '@/stores/auth';
@@ -38,28 +27,10 @@ import { COLOR } from '@/theme/tokens';
 import { useTenantRouting } from './useTenantRouting';
 
 /**
- * 设计稿 S2 的菜单清单；成员/AI/订阅/邀请/设置暂为占位页（PlaceholderPage）。
- *
- * 子路由约定（与 router.tsx 的嵌套结构同源）：
- * - 有子页面的菜单用 children 描述（如资源列表 → 资源详情 :id）；
- * - 子项 hideInMenu: true 表示「路由存在但侧栏不展示」（动态详情页不进菜单）；
- *   有可见子项时 ProLayout 渲染为可展开 submenu，全隐藏时剔除 children 保持平铺。
+ * 侧栏菜单不再是手写清单：由 src/pages/app/** 的约定目录自动生成
+ * （见 app/routes/scan.ts）。加页面只需建目录 + page.tsx + meta.ts，
+ * 本文件与 router.tsx 都不用改。
  */
-const BASE_MENU: MenuDataItem[] = [
-  { path: '/app', name: '工作台', icon: <AppstoreOutlined /> },
-  {
-    path: '/app/resources',
-    name: '资源列表',
-    icon: <DatabaseOutlined />,
-    children: [{ path: '/app/resources/:id', name: '资源详情', hideInMenu: true }],
-  },
-  { path: '/app/trash', name: '回收站', icon: <DeleteOutlined /> },
-  { path: '/app/members', name: '成员管理', icon: <TeamOutlined /> },
-  { path: '/app/ai', name: 'AI 助手', icon: <RobotOutlined /> },
-  { path: '/app/billing', name: '订阅支付', icon: <PayCircleOutlined /> },
-  { path: '/app/invite', name: '邀请中心', icon: <UserAddOutlined /> },
-  { path: '/app/settings', name: '设置', icon: <SettingOutlined /> },
-];
 
 export interface AuthLayoutProps {
   /** 是否渲染自绘顶栏（面包屑 / 搜索 / 用户）。全屏类页面可传 false；默认 true */
@@ -82,37 +53,15 @@ export function AuthLayout({ showTopBar = true }: AuthLayoutProps) {
   // 受控折叠：收起时 logo 区只留 logo，展开才带「SaaS Starter」文字
   const [collapsed, setCollapsed] = useState(false);
 
-  const menuData: MenuDataItem[] = useMemo(() => {
-    // 回收站按权限过滤；其余保持顺序原样输出
-    const visible = BASE_MENU.filter((item) => item.path !== '/app/trash' || can('trash.manage'));
-    // 子菜单展示控制：有可见子项 → 交给 ProLayout 渲染 submenu；
-    // 全部 hideInMenu → 剔除 children，保持平铺（否则会渲染出空 submenu）
-    return visible.map((item) => {
-      if (!item.children) return item;
-      const shown = item.children.filter((c) => !c.hideInMenu);
-      return shown.length > 0 ? { ...item, children: shown } : { ...item, children: undefined };
-    });
-  }, [can]);
+  // 菜单由路由树派生：权限过滤、hideInMenu、空子菜单剔除都在 menuFromTree 内完成
+  const menuData = useMemo(() => menuFromTree(appRoot, can), [can]);
 
-  // 高亮归属：先按子路由模式匹配（/app/resources/:id → 归属「资源列表」），
-  // 再按顶级路径匹配（/app 精确匹配，其余允许子路径归属父菜单）。
-  // 面包屑名与菜单名共用同一匹配结果，保证两者永远一致。
-  const matched = (() => {
-    for (const item of BASE_MENU) {
-      // MenuDataItem.path 可选，缺 path 的子项（纯分组）不参与匹配
-      const child = (item.children ?? []).find((c) =>
-        c.path ? matchPath(c.path, location.pathname) : null,
-      );
-      if (child) return item;
-    }
-    return BASE_MENU.find((item) =>
-      item.path
-        ? matchPath({ path: item.path, end: item.path === '/app' }, location.pathname)
-        : null,
-    );
-  })();
-  const selectedPath = matched?.path ?? '/app';
-  const currentName = matched?.name ?? '工作台';
+  // 高亮与面包屑共用同一次匹配：先在路由树里定位当前节点，再上溯到最近的菜单项。
+  // 资源详情（hideInMenu）因此自动归属「资源列表」，不再需要「子路由模式优先」的手写特判。
+  const matched = findRouteNode(routeTree, location.pathname);
+  const owner = menuOwner(matched);
+  const selectedPath = owner?.urlPath ?? '/app';
+  const currentName = owner?.meta?.title ?? '工作台';
 
   // 详情页面包屑按设计稿 S4 为两级「资源列表 / {资源名}」（无「首页」）；
   // 复用详情页的 react-query 缓存（同 key 去重），不发额外请求

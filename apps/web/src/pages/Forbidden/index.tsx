@@ -11,7 +11,15 @@ import { COPY } from '@/constants/copy';
 import { FORBIDDEN_COPY } from './constants';
 
 /** 403 页面：展示权限不足并提供返回出口 */
-export default function Forbidden() {
+export interface ForbiddenProps {
+  /**
+   * 「返回」按钮的目标。缺省回上一页；
+   * 权限守卫在布局内原地渲染时传 `/app`，避免返回被拦路径后又被拦一次。
+   */
+  backTo?: string;
+}
+
+export default function Forbidden({ backTo }: ForbiddenProps) {
   const navigate = useNavigate();
 
   return (
@@ -23,7 +31,7 @@ export default function Forbidden() {
         <Button key="home" type="primary" onClick={() => navigate('/app')}>
           {COPY.common.backHome}
         </Button>,
-        <Button key="back" onClick={() => navigate(-1)}>
+        <Button key="back" onClick={() => (backTo ? navigate(backTo) : navigate(-1))}>
           {FORBIDDEN_COPY.goBack}
         </Button>,
       ]}
