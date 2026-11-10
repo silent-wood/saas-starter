@@ -8,8 +8,10 @@
  *   - 其余 → 抛 ApiError，由调用方决定 message 提示还是表单字段错误
  */
 import axios, { AxiosError, type AxiosRequestConfig, type InternalAxiosRequestConfig } from 'axios';
+import { ERROR_CODES } from '@saas/shared';
 import { useAuthStore } from '@/stores/auth';
 import { useTenantStore } from '@/stores/tenant';
+import { queryClient } from '@/shared/api/queryClient';
 
 /** 后端统一成功体（TransformInterceptor 产出） */
 export interface ApiEnvelope<T> {
@@ -106,12 +108,47 @@ interface RetriableConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
 }
 
+/**
+ * 租户上下文失效（403 `TENANT_MISMATCH`）的统一兜底：清除失效的租户选择，
+ * 让落点层（`useTenantRouting`）重新取一次列表，空列表就落到引导页。
+ *
+ * 三个动作的顺序和取舍：
+ * 1. `markRemoved` + `clearCurrent` 同步执行 —— 拦截器每次请求都实时读 store，
+ *    清掉之后不会再有新请求带上这个已失效的 id。
+ * 2. `removeQueries()` 必须连 `['tenants']` 一起清。只清业务缓存的话，落点层会
+ *    拿着「包含被移出团队」的旧列表把 `currentTenantId` 又选回去，形成
+ *    403 → 清 → 重选 → 403 的死循环。
+ * 3. `cancelQueries()` 丢弃在途响应，否则它们返回后会重建刚被删掉的缓存项。
+ *
+ * 并发 403 天然幂等，不需要额外的防重入锁：第一个响应把 `currentTenantId` 置空后，
+ * 后续响应会在下面的提前 return 处直接退出，也就不会连弹多条提示。
+ */
+function handleTenantMismatch(): void {
+  const store = useTenantStore.getState();
+  // 没有租户上下文时的 403 不是「被移除」（典型是 0 个团队的用户直接访问 /app）。
+  // 那种情况交给落点层跳引导页；这里若也清缓存，页面会不断重取 → 再 403。
+  if (!store.currentTenantId) return;
+
+  store.markRemoved();
+  store.clearCurrent();
+  queryClient.removeQueries();
+  void queryClient.cancelQueries();
+}
+
 // 响应拦截：错误归一
 raw.interceptors.response.use(
   (response) => response,
   async (error: AxiosError<ApiErrorBody>) => {
     const config = error.config as RetriableConfig | undefined;
     const url = config?.url ?? '';
+
+    // 被移出租户（owner/admin 移除成员）唯一的可观测信号：
+    // 业务请求突然全部 403。不在这里处理，用户会卡在「满屏报错、下拉里还显示
+    // 那个团队、点它也没反应」的状态里，因为这个 id 就是当前项。
+    if (error.response?.data?.error?.code === ERROR_CODES.TENANT_MISMATCH) {
+      handleTenantMismatch();
+    }
+
     const shouldRetry =
       error.response?.status === 401 &&
       config &&

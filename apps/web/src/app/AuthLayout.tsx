@@ -5,23 +5,24 @@
  * layout === 'side' 直接 return null），顶栏在 ProLayout children 内自绘：
  * - 侧栏：logo 图片 + 「SaaS Starter」标题（与菜单同宽 208，高度 56 与顶栏对齐）
  * - 顶栏：左侧面包屑「首页 / 当前页」，右侧搜索框 / 通知铃铛（红点）/ 头像下拉；
- *   位于内容区内、占满侧栏以外宽度，sticky 滚动常驻；showTopbar=false 可关闭
+ *   位于内容区内、占满侧栏以外宽度，sticky 滚动常驻；showTopBar=false 可关闭。
+ *   头像下拉（components/UserMenu）承载团队信息：多租户时为二级菜单、点即切换，
+ *   单租户时降级为不可点的展示项（仍显示团队名与角色）。
  * 菜单按权限过滤——member 无「回收站」入口（trash.manage 限 admin+，后端同样拦截）。
  * 成员管理 / AI 助手 / 订阅支付 / 邀请中心 / 设置为占位页（PlaceholderPage），
  * 对应功能落地时替换路由元素即可。
  */
-import { BellOutlined, LogoutOutlined, SearchOutlined } from '@ant-design/icons';
+import { BellOutlined, SearchOutlined } from '@ant-design/icons';
 import { ProLayout } from '@ant-design/pro-components';
-import { Avatar, Badge, Breadcrumb, Dropdown, Input, Space, Tooltip } from 'antd';
+import { Badge, Breadcrumb, Input, Space, Tooltip } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router';
 import logoUrl from '@/assets/imgs/logo.png';
 import { findRouteNode, menuFromTree, menuOwner } from '@/app/routes/menu';
 import { appRoot, routeTree } from '@/app/routes/scan';
-import { useLogout } from '@/hooks/useLogout';
+import { UserMenu } from '@/components/UserMenu';
 import { usePermission } from '@/hooks/usePermission';
-import { useAuthStore } from '@/stores/auth';
 import { resourceApi } from '@/shared/api/resource';
 import { COLOR } from '@/theme/tokens';
 import { useTenantRouting } from './useTenantRouting';
@@ -44,11 +45,9 @@ export function AuthLayout({ showTopBar = true }: AuthLayoutProps) {
    * 单租户会自动选定并静默通过，多租户且当前选择失效时才跳 /select-tenant。
    */
   useTenantRouting();
-  const logout = useLogout();
   const navigate = useNavigate();
   const location = useLocation();
   const { can } = usePermission();
-  const user = useAuthStore((s) => s.user);
   const [keyword, setKeyword] = useState('');
   // 受控折叠：收起时 logo 区只留 logo，展开才带「SaaS Starter」文字
   const [collapsed, setCollapsed] = useState(false);
@@ -119,26 +118,7 @@ export function AuthLayout({ showTopBar = true }: AuthLayoutProps) {
             </span>
           </Badge>
         </Tooltip>
-        <Dropdown
-          menu={{
-            items: [
-              {
-                key: 'logout',
-                icon: <LogoutOutlined />,
-                label: '退出登录',
-                onClick: () => void logout(),
-              },
-            ],
-          }}
-        >
-          <Avatar
-            src={user?.avatarUrl ?? undefined}
-            size={32}
-            style={{ backgroundColor: COLOR.primary, color: COLOR.surface, cursor: 'pointer' }}
-          >
-            {user?.name?.[0] ?? '?'}
-          </Avatar>
-        </Dropdown>
+        <UserMenu />
       </Space>
     </header>
   );

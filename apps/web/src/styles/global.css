@@ -153,3 +153,32 @@ body {
   width: 28px;
   height: 28px;
 }
+
+/**
+ * 顶栏团队名：内容超出可视宽度时，悬停左右往复滚动以读全名。
+ *
+ * 位移量由 UserMenu 测量 scrollWidth - clientWidth 后写入 `--tenant-shift`（负值），
+ * 不在 CSS 里写死宽度 —— 宽度上限跟着 NAME_MAX_WIDTH 走，改一处即可。
+ * alternate 让往复自然，delay 避开 Dropdown 弹出的那一下，避免刚悬停就抖。
+ */
+@keyframes tenant-name-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(var(--tenant-shift, 0px));
+  }
+}
+
+.tenant-name-scroll {
+  display: inline-block;
+  animation: tenant-name-scroll 3s ease-in-out 0.3s infinite alternate;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tenant-name-scroll {
+    animation: none;
+    transform: translateX(var(--tenant-shift, 0px));
+  }
+}
