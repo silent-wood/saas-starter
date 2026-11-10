@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { createBrowserRouter, Navigate } from 'react-router';
+import { createBrowserRouter, Navigate, Outlet } from 'react-router';
 import { Spin } from 'antd';
 import Login from '@/pages/Login';
 import Register from '@/pages/Register';
@@ -13,8 +13,11 @@ import VerifyEmail from '@/pages/VerifyEmail';
 import { ForgotPassword } from '@/pages/ForgotPassword';
 import { SelectTenant } from '@/pages/SelectTenant';
 import { ResetPassword } from '@/pages/ResetPassword';
+import { PlaceholderPage } from '@/pages/Placeholder';
 
 const Resources = lazy(() => import('@/pages/Resource'));
+const ResourceDetail = lazy(() => import('@/pages/Resource/Detail'));
+const Trash = lazy(() => import('@/pages/Trash'));
 
 const router = createBrowserRouter([
   { path: '/login', element: <Login /> },
@@ -40,16 +43,47 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Dashboard /> },
       {
+        // 资源模块嵌套子路由：列表为 index，详情为 :id 子路由。
+        // 父路由仅做结构承载（Outlet + 统一错误边界），两个子页各自独立渲染。
         path: 'resources',
         element: (
           // 路由级错误边界（规范 §18）：懒加载页崩溃只白屏该页，重试不刷新整站
           <ErrorBoundary scene="resources">
             <Suspense fallback={<Spin />}>
-              <Resources />
+              <Outlet />
+            </Suspense>
+          </ErrorBoundary>
+        ),
+        children: [
+          { index: true, element: <Resources /> },
+          {
+            path: ':id',
+            element: (
+              <ErrorBoundary scene="resourceDetail">
+                <Suspense fallback={<Spin />}>
+                  <ResourceDetail />
+                </Suspense>
+              </ErrorBoundary>
+            ),
+          },
+        ],
+      },
+      {
+        path: 'trash',
+        element: (
+          <ErrorBoundary scene="trash">
+            <Suspense fallback={<Spin />}>
+              <Trash />
             </Suspense>
           </ErrorBoundary>
         ),
       },
+      // 以下为占位页：菜单已出、功能未开发，落地时替换成真实页面组件
+      { path: 'members', element: <PlaceholderPage title="成员管理" /> },
+      { path: 'ai', element: <PlaceholderPage title="AI 助手" /> },
+      { path: 'billing', element: <PlaceholderPage title="订阅支付" /> },
+      { path: 'invite', element: <PlaceholderPage title="邀请中心" /> },
+      { path: 'settings', element: <PlaceholderPage title="设置" /> },
     ],
   },
   // 403：接口返回 403 时由页面级逻辑跳转过来（规范 §18：403 属页面级处理，不做全局拦截跳转）
