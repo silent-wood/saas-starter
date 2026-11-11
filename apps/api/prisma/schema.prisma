@@ -58,6 +58,9 @@ model User {
   ownedTenants    Tenant[]     @relation("TenantOwner")
   emailTokens     EmailToken[]
   refreshTokens   RefreshToken[]
+  // 邀请域：同一张 users 表两条外键（邀请人 / 接受人），必须显式命名
+  sentInvites     Invite[]     @relation("InviteInviter")
+  acceptedInvites Invite[]     @relation("InviteAccepter")
   // 资源域反向关系：Resource 有两条外键指向 users，名称必须与那边一一对应
   createdResources Resource[] @relation("ResourceCreator")
   deletedResources Resource[] @relation("ResourceDeleter")
@@ -79,6 +82,7 @@ model Tenant {
 
   owner       User         @relation("TenantOwner", fields: [ownerId], references: [id])
   memberships Membership[]
+  invites     Invite[]
   @@index([ownerId]) // 查"我拥有的租户"
   @@map("tenants")
 }
@@ -268,6 +272,49 @@ model Resource {
   @@index([tenantId, deletedAt]) // 正常列表与回收站共用
   @@index([tenantId, category]) // 分类过滤
   @@map("resources")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 成员域：邀请（05 方案）
+// ─────────────────────────────────────────────────────────────
+// invite_status：pending 待接受 / accepted 已接受 / revoked 已撤销。
+// 过期不落状态：靠 expires_at 现算，避免需要定时任务把行刷成 expired
+enum InviteStatus {
+  pending
+  accepted
+  revoked
+}
+
+// invites：待接受的成员邀请。**接受后才有 memberships 行** —— 被邀请人可能还没有
+// users 记录（未注册），而 memberships.user_id 是 NOT NULL，装不下 pending 状态
+model Invite {
+  id         String       @id @default(cuid())
+  tenantId   String       @map("tenant_id")
+  // 与 users.email 同口径长度（RFC 5321 上限 254）
+  email      String       @db.VarChar(254)
+  // 只能是 admin / member：owner 只有一个，转移所有权走独立接口，避免邀请出第二个 owner
+  role       MemberRole   @default(member)
+  // 只存 sha256 hex（64 字符）。明文 token 仅出现在邮件链接与创建/重发的响应里，
+  // 库被读走也无法据此兑换 —— 与 email_tokens 同样的纪律
+  tokenHash  String       @unique @map("token_hash") @db.VarChar(64)
+  status     InviteStatus @default(pending)
+  invitedBy  String       @map("invited_by")
+  expiresAt  DateTime     @map("expires_at")
+  acceptedAt DateTime?    @map("accepted_at")
+  acceptedBy String?      @map("accepted_by")
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  inviter  User   @relation("InviteInviter", fields: [invitedBy], references: [id])
+  accepter User?  @relation("InviteAccepter", fields: [acceptedBy], references: [id])
+
+  // 成员页按「租户 + 待接受」取列表；不做 @@unique([tenantId,email,status])：
+  // 那样会把 accepted / revoked 的历史行也算进唯一性，第二次邀请直接撞约束。
+  // 「同一邮箱只有一条 pending」由 service 在事务内查重保证（05 方案 §4.2）
+  @@index([tenantId, status])
+  @@index([email])
+  @@map("invites")
 }
 
 // ─────────────────────────────────────────────────────────────

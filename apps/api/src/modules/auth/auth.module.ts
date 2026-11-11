@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
-import { MailService } from './mail.service.js';
 import { TokenService } from './token.service.js';
+import { MailModule } from '../../common/mail/mail.module.js';
 
 /**
  * 认证模块 —— 注册 / 登录 / 刷新 / 登出 / 邮箱验证 的装配入口。
@@ -23,8 +23,10 @@ import { TokenService } from './token.service.js';
 @Module({
   // 不需要 import PrismaModule：它是 @Global 的
   // 也不需要 import JwtModule：app.module 里注册成 global
+  // MailModule 不是全局的（见其注释），发信能力要显式 import
+  imports: [MailModule],
   controllers: [AuthController],
-  providers: [AuthService, TokenService, MailService],
+  providers: [AuthService, TokenService],
   // 导出 TokenService 供后续 tenants / 其它模块复用签令牌能力，
   // 不导出 AuthService 是为了逼调用方走 controller 边界
   exports: [TokenService],

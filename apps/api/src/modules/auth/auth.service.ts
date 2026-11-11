@@ -7,6 +7,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import {
+  AUDIT_ACTIONS,
   AuthUser,
   ERROR_CODES,
   ForgotPasswordInput,
@@ -25,7 +26,8 @@ import bcrypt from 'bcrypt';
 import { PRISMA } from '../../prisma/prisma.module.ts';
 import type { ExtendedPrismaClient } from '../../prisma/prisma.service.ts';
 import { TokenService } from './token.service.ts';
-import { MailService } from './mail.service.ts';
+import { MailService } from '../../common/mail/mail.service.ts';
+import { AuditService } from '../audit/audit.service.ts';
 import { User } from '../../generated/prisma/client.ts';
 
 /** bcrypt 成本因子：12 ≈ 单次哈希 200ms，离线爆破成本与登录延迟的平衡点 */
@@ -82,6 +84,8 @@ export class AuthService {
     @Inject(PRISMA) private readonly prisma: ExtendedPrismaClient,
     private readonly tokenService: TokenService,
     private readonly mailService: MailService,
+    // AuditModule 是 @Global 的，直接注入即可（登录审计见 login 方法注释）
+    private readonly audit: AuditService,
   ) {}
 
   // -----------注册-------------------
@@ -288,7 +292,12 @@ export class AuthService {
   }
 
   // ----------登录----------------------
-  async login(input: LoginInput): Promise<LoginOutcome> {
+  /**
+   * @param ip 调用方 IP，只用于登录审计的 `audit_logs.ip`。
+   *   由 controller 从 `req.ip` 传进来 —— service 拿不到请求对象，
+   *   也不该为了一个审计字段去依赖 HTTP 层。
+   */
+  async login(input: LoginInput, ip?: string | null): Promise<LoginOutcome> {
     const email = this.normalizeEmail(input.email);
     const user = await this.prisma.user.findUnique({
       where: { email },
@@ -339,6 +348,21 @@ export class AuthService {
       }),
     ]);
     this.logger.log(`user.login success userId=${user.id}`);
+
+    // 登录审计走 service 而不是 @Audit 装饰器：`@Public()` 接口执行时
+    // JwtAuthGuard 没有跑过，拦截器读到的 req.user 是 undefined（06 方案 §1.3 已预留此路径）。
+    // 只记成功登录：actor_user_id 是 NOT NULL，失败登录没有 actor，
+    // 且该接口有 5 次/15 分钟限流，记失败等于给自己加一条可被刷量的写路径。
+    // void 不 await：审计是旁路，Neon 远程库一次 INSERT 5–20ms，不该拖慢登录响应。
+    void this.audit.record({
+      tenantId: null, // 账号级事件：登录发生在「选定租户之前」
+      actorUserId: user.id,
+      action: AUDIT_ACTIONS.AUTH_LOGIN,
+      result: 'success',
+      // INET 列不接受空串，req.ip 在部分代理配置下就是空串
+      ip: ip || null,
+      detail: { method: 'POST', path: '/auth/login' },
+    });
 
     return { accessToken, refreshToken, user: this.toAuthUser(user) };
   }

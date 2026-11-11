@@ -16,6 +16,7 @@ import { TenantContextMiddleware } from './common/middleware/tenant-context.midd
 import { AuditModule } from './modules/audit/audit.module.ts';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor.ts';
 import { RolesGuard } from './common/guards/roles.guard.ts';
+import { MembersModule } from './modules/members/members.module.ts';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { RolesGuard } from './common/guards/roles.guard.ts';
     TenantsModule,
     AuditModule,
     ResourcesModule,
+    MembersModule,
   ],
   providers: [
     // 全局守卫注册在这里，而**不是** app.useGlobalGuards(new JwtAuthGuard())：

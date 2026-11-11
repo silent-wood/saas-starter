@@ -121,13 +121,15 @@
 
 | 编号 | 功能 | 状态 | 版本 | 涉及接口 |
 |------|------|------|------|---------|
-| 01 | 注册与登录 | 已确认 | v1.2 | POST /auth/register、/auth/verify-email、/auth/login、/auth/refresh、/auth/logout、GET /auth/me、GET /tenants |
+| 01 | 注册与登录 | 已确认（v1.3 待实现） | v1.3 | POST /auth/register（可带 `inviteToken`）、/auth/verify-email、/auth/login、/auth/refresh、/auth/logout、GET /auth/me、GET /tenants |
 | 02 | 找回密码 | 已确认 | v1.1 | POST /auth/forgot-password、/auth/reset-password |
 | 03 | 多租户行级隔离 | 已实现 | v1.0 | 无新增接口（机制层） |
 | 04 | 租户创建与切换 | 已确认 | v1.0 | 无新增接口（切换为纯前端行为，复用 GET /tenants；创建进版本池） |
-| 05 | 成员与邀请 | 规划中 | — | — |
+| 05 | 成员与邀请 | 已实现 | v1.2 | GET /members、POST /invites、DELETE /invites/:id、POST /invites/:id/resend、GET /invites/:token、POST /invites/accept、PATCH /members/:id、POST /members/:id/{disable,enable,transfer-owner}、DELETE /members/:id |
 | 06 | RBAC 与审计 | 已确认 | v1.0 | 无新增接口（机制层） |
 | 07 | 资源 CRUD + 回收站 | 已确认 | v1.1 | GET/POST /resources、GET/PATCH/DELETE /resources/:id、GET /trash、POST /trash/:id/restore、DELETE /trash/:id |
 
 > 编号按《01-注册与登录》§1.3 的规划序列固定，**不等于落地顺序**。06 提前于 04/05 落地，是为了让后面所有业务接口都能直接用上角色判定与审计留痕，避免先写接口再回头补权限。
+>
+> 05 另外配了一份 [`05-实施步骤.md`](./05-实施步骤.md)：方案讲「做什么」，步骤讲「按什么顺序改哪些文件、每步怎么自证、哪里容易踩坑」。
 

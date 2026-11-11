@@ -22,5 +22,6 @@ export * from './roles.js';
 export * from './resource-categories.js';
 export * from './contracts/auth.js';
 export * from './contracts/envelope.js';
+export * from './contracts/member.js';
 export * from './contracts/resource.js';
 export * from './contracts/tenant.js';

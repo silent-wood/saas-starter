@@ -122,9 +122,11 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async login(
     @Body({ schema: loginSchema }) body: LoginInput,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResult> {
-    const { accessToken, refreshToken, user } = await this.authService.login(body);
+    // req.ip 透传给 service 只为写登录审计（audit_logs.ip）；service 不碰 HTTP 层
+    const { accessToken, refreshToken, user } = await this.authService.login(body, req.ip);
     // 本期固定下发持久 cookie（Max-Age = REFRESH_TTL_DAYS，30 天）：
     // body.rememberMe 被契约接收但**服务端不读取**，理由见 loginSchema 的注释。
     // 保留 setRefreshCookie 的 persistent 形参，将来接「不记住 → 会话 cookie」时

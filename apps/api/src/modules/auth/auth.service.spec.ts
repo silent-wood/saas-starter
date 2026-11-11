@@ -4,7 +4,8 @@ import type { Mock } from 'vitest';
 import bcrypt from 'bcrypt';
 import { AuthService } from './auth.service.ts';
 import { TokenService } from './token.service.ts';
-import { MailService } from './mail.service.ts';
+import { MailService } from '../../common/mail/mail.service.ts';
+import { AuditService } from '../audit/audit.service.ts';
 import { PRISMA } from '../../prisma/prisma.module.ts';
 
 /**
@@ -76,6 +77,12 @@ describe('AuthService - 找回密码', () => {
         {
           provide: MailService,
           useValue: { sendResetPasswordEmail },
+        },
+        // 登录审计的旁路写入（05 方案 AC-15）。本文件不测审计，
+        // 但构造函数多了一个依赖，不 provide 会解析失败
+        {
+          provide: AuditService,
+          useValue: { record: vi.fn() },
         },
       ],
     }).compile();

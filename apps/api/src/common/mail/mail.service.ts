@@ -7,6 +7,8 @@ import { ERROR_CODES } from '@saas/shared';
 const VERIFY_TOKEN_TTL_MINUTES = 15;
 /** 重置密码令牌有效期，与 AuthService 里 RESET_TOKEN_TTL 的 30 分钟同源 */
 const RESET_TOKEN_TTL_MINUTES = 30;
+/** 邀请链接有效期，与 MembersService 的 INVITE_TTL_MS 的 7 天同源 */
+const INVITE_TTL_DAYS = 7;
 
 @Injectable()
 export class MailService {
@@ -79,6 +81,45 @@ export class MailService {
         code: ERROR_CODES.INTERNAL_ERROR,
         message: '重置邮件发送失败，请稍后重试',
       });
+    }
+  }
+
+  /**
+   * 发送邀请邮件。
+   *
+   * 与上面两个方法的关键差异：**失败不抛异常**。
+   * 邀请行已经落库，接口要把 `joinUrl` 返回给管理员去复制转发（05 方案 AC-17）；
+   * 这里的 5xx 会让前端以为"邀请没建成功"，管理员重试一次又轮换掉 token，
+   * 反而把手上那条有效链接作废。所以只记日志，送达责任交给可复制的链接。
+   */
+  async sendInviteEmail(
+    to: string,
+    invite: { tenantName: string; inviterName: string; joinUrl: string },
+  ): Promise<void> {
+    if (!this.resend) {
+      // devMode（本地 Resend 域名未验证，真发会被拒）：链接直接打终端，复制即可点开
+      this.logger.warn(
+        `[MAIL_DEV_MODE] 未发送邀请邮件，加入链接（${INVITE_TTL_DAYS} 天内有效）：${invite.joinUrl} → ${to}`,
+      );
+      return;
+    }
+
+    const { error } = await this.resend.emails.send({
+      from: this.config.getOrThrow<string>('mail.from'),
+      to,
+      subject: `${invite.inviterName} 邀请你加入「${invite.tenantName}」`,
+      html:
+        `<p>${invite.inviterName} 邀请你加入团队「${invite.tenantName}」。</p>` +
+        `<p>点击下面的链接接受邀请（${INVITE_TTL_DAYS} 天内有效）：</p>` +
+        `<p><a href="${invite.joinUrl}">${invite.joinUrl}</a></p>` +
+        `<p>如果这不是你预期的邀请，忽略本邮件即可。</p>`,
+    });
+
+    if (error) {
+      // 不抛：见方法注释。管理员界面会同时展示可复制的链接
+      this.logger.error(
+        `邀请邮件发送失败 to=${to} tenant=${invite.tenantName}：${error.name} ${error.message}`,
+      );
     }
   }
 }

@@ -14,8 +14,7 @@ import type { ComponentType } from 'react';
 import type { Permission } from '@saas/shared';
 
 /** 菜单图标用字符串键，避免 meta.ts 反向依赖组件库、也保证 meta 是可序列化纯数据 */
-export type IconName =
-  'appstore' | 'database' | 'delete' | 'team' | 'robot' | 'pay' | 'invite' | 'setting';
+export type IconName = 'appstore' | 'database' | 'delete' | 'team' | 'robot' | 'pay' | 'setting';
 
 /** 页面元信息：与 page.tsx 同目录的 meta.ts 默认导出 */
 export interface RouteMeta {

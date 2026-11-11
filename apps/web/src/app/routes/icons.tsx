@@ -14,7 +14,6 @@ import {
   RobotOutlined,
   SettingOutlined,
   TeamOutlined,
-  UserAddOutlined,
 } from '@ant-design/icons';
 import type { ReactNode } from 'react';
 import type { IconName } from './types';
@@ -26,6 +25,5 @@ export const ICONS: Record<IconName, ReactNode> = {
   team: <TeamOutlined />,
   robot: <RobotOutlined />,
   pay: <PayCircleOutlined />,
-  invite: <UserAddOutlined />,
   setting: <SettingOutlined />,
 };
