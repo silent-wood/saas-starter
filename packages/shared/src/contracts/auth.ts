@@ -206,14 +206,29 @@ export type RegisterResult = z.infer<typeof registerResultSchema>;
  * `POST /auth/verify-email` 成功响应（200）。
  *
  * 该接口在**同一事务**里完成四写：`email_tokens.used_at`、`users.email_verified_at`、
- * `tenants`（新建）、`memberships`（新建 owner 记录）。任何一步失败整体回滚，
- * 避免出现"邮箱已验证但没有租户"的僵尸账号。
+ * `tenants`（新建）或 `memberships`（受邀时加入对方团队）、`refresh_tokens`（新增一条会话）。
+ * 任何一步失败整体回滚，避免出现"邮箱已验证但没有租户"的僵尸账号。
+ *
+ * v1.4：**验证即登录**。点开邮件链接 = 证明持有该邮箱，此时再让用户回登录页手打一遍
+ * 密码纯属多余（受邀注册的人更夸张：注册 → 跳登录页 → 收信 → 验证 → 再跳登录页 → 输密码）。
+ * 所以这里和 `POST /auth/login` 一样下发 `accessToken`（refresh 仍走 `Set-Cookie`，
+ * 不进响应体），前端拿到即写 store、直接进工作台。
+ *
+ * 这不改变 AC-01「注册接口不下发令牌」：注册那一刻邮箱还没被证明，
+ * 令牌只在这一步之后出现。
  */
 export const verifyEmailResultSchema = z.object({
   /** 固定 true：走到这里说明令牌已消费成功（失败一律抛 TOKEN_INVALID） */
   verified: z.literal(true),
-  /** 验证通过时新建的租户 id；前端可据此跳转并带上 `X-Tenant-Id` */
+  /**
+   * 验证后的落点租户：普通注册是新建的团队，受邀注册是**被邀请的那个团队**
+   * （前端不需要据此跳转，`GET /tenants` 已能拿到完整列表，这里保留给埋点与回退）
+   */
   tenantId: z.string(),
+  /** JWT access token（15 分钟），与登录同一个签发方法；前端只需存内存 */
+  accessToken: z.string(),
+  /** 当前用户信息，避免验证后立刻再发一次 `/auth/me` */
+  user: authUserSchema,
 });
 
 export type VerifyEmailResult = z.infer<typeof verifyEmailResultSchema>;

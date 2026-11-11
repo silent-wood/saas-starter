@@ -42,6 +42,11 @@ export interface LoginOutcome extends LoginResult {
   refreshToken: string;
 }
 
+/** 验证结果 + 明文 refresh（同上：access 进响应体，refresh 进 httpOnly cookie） */
+export interface VerifyEmailOutcome extends VerifyEmailResult {
+  refreshToken: string;
+}
+
 /** 刷新结果 + 新的明文 refresh（轮转后必须换 cookie，否则下次刷新用的是已吊销的旧令牌） */
 export interface RefreshOutcome {
   accessToken: string;
@@ -53,7 +58,7 @@ export interface RefreshOutcome {
  *
  * 六条主流程：
  *  register    注册：只写 user + email_token，不建租户（租户等验证通过才建）
- *  verifyEmail 验证：事务内做四件事——消费令牌、置 verified、建租户、建 owner 成员
+ *  verifyEmail 验证：事务内消费令牌、置 verified、建租户或入团；**通过即登录**，直接下发双令牌
  *  login       登录：bcrypt 比对 + 签发双令牌（access 进响应体，refresh 进 httpOnly cookie）
  *  refresh     刷新：轮转——吊销旧 refresh，签发新的（防令牌被盗后长期复用）
  *  logout      登出：吊销 refresh，幂等
@@ -181,7 +186,7 @@ export class AuthService {
   // -----------邮箱验证-------------------
 
   /**
-   * 消费验证令牌并产出「用户属于哪个团队」。
+   * 消费验证令牌，产出「用户属于哪个团队」，并**直接完成登录**。
    *
    * 两条路径，终点一致（`email_verified_at` 置位 + 一条 `status=active` 的 membership）：
    * - **受邀注册**：payload 带 `inviteId`，加入邀请指向的团队，**不建租户**
@@ -192,8 +197,15 @@ export class AuthService {
    * 用这个邮箱注册；若注册即消费，攻击者占住邮箱、邀请变 accepted，他自己永远
    * 验证不了邮箱也登录不了，管理员却在成员列表看到「已接受」，真正的受邀人反而
    * 被挡在 410 外面。点开邮件里的验证链接 = 证明持有该邮箱，此时才是可信身份。
+   *
+   * 为什么验证后直接下发令牌（v1.4）：上面那句同样成立的反面——**能点开这封邮件，
+   * 就已经证明是邮箱主人**，再让 ta 回登录页手打一遍刚设的密码，是对「刚注册完」
+   * 这个上下文的浪费。受邀注册尤其别扭：注册 → 登录页 → 收信 → 验证 → 登录页 → 密码。
+   * 所以这里与 `login` 走同一套签发，前端拿到 accessToken 即写 store 进工作台。
+   * 安全性没有下降：令牌只在这一步之后出现（AC-01 讲的是**注册接口**不发令牌），
+   * 而"能拿到这封邮件"正是登录需要证明的唯一条件。
    */
-  async verifyEmail(token: string): Promise<VerifyEmailResult> {
+  async verifyEmail(token: string, ip?: string | null): Promise<VerifyEmailOutcome> {
     const invalid = () =>
       new BadRequestException({
         code: ERROR_CODES.TOKEN_INVALID,
@@ -208,6 +220,12 @@ export class AuthService {
     if (!record || record.usedAt || record.expiresAt.getTime() <= Date.now()) throw invalid();
 
     const payload = this.readPayload(record.payload);
+    /**
+     * 验证券已置位的时间点先算出来：事务里要写库，返回体里的 user 也要显示
+     * `emailVerified: true`。用 `record.user` 原样返回会带上验证前的 `null`，
+     * 前端读到的就是「刚验证完但还说没验证」。
+     */
+    const verifiedAt = record.user.emailVerifiedAt ?? new Date();
 
     const tenantId = await this.prisma.$transaction(async (tx) => {
       const consumed = await tx.emailToken.updateMany({
@@ -218,7 +236,7 @@ export class AuthService {
 
       await tx.user.update({
         where: { id: record.userId },
-        data: { emailVerifiedAt: record.user.emailVerifiedAt ?? new Date() },
+        data: { emailVerifiedAt: verifiedAt },
       });
 
       const now = new Date();
@@ -297,7 +315,48 @@ export class AuthService {
       });
       return tenant.id;
     });
-    return { verified: true, tenantId };
+
+    /**
+     * 会话落库与 login 完全一致：签发 access（响应体） + refresh（cookie）。
+     * 单独一个事务而不是塞进上面那个：上面的事务负责"账号状态"，这里负责"会话"，
+     * 两者的失败语义不同——会话写不进去不该让邮箱验证回滚（用户白点一次链接）。
+     */
+    const refreshToken = this.tokenService.createOpaqueToken();
+    const accessToken = await this.tokenService.signAccessToken(record.userId);
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: record.userId },
+        data: { lastLoginAt: new Date() },
+      }),
+      this.prisma.refreshToken.create({
+        data: {
+          userId: record.userId,
+          tokenHash: this.tokenService.hashToken(refreshToken),
+          expiresAt: this.tokenService.refreshExpiresAt(),
+        },
+      }),
+    ]);
+    this.logger.log(`user.verifyEmail success userId=${record.userId} tenant=${tenantId}`);
+
+    // 验证即登录，所以同样记一条 auth.login：审计里看到的应该是「发生了一次登录」，
+    // 而不是一条无法与登录区分来源的验证记录。detail.path 保留入口用于排查
+    void this.audit.record({
+      tenantId: null,
+      actorUserId: record.userId,
+      action: AUDIT_ACTIONS.AUTH_LOGIN,
+      result: 'success',
+      ip: ip || null,
+      detail: { method: 'POST', path: '/auth/verify-email' },
+    });
+
+    return {
+      verified: true,
+      tenantId,
+      accessToken,
+      refreshToken,
+      // 用 verifiedAt 覆盖 record.user 的快照（它是事务前读出来的，verified 为 null）
+      user: this.toAuthUser({ ...record.user, emailVerifiedAt: verifiedAt }),
+    };
   }
 
   // ----------找回密码-------------------

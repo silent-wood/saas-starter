@@ -46,6 +46,15 @@ export function useTenantRouting() {
     if (removed) store.clearRemovedNotice();
 
     if (items.length === 0) {
+      /**
+       * 顺手清掉失效的 `currentTenantId`。
+       *
+       * 它来自 localStorage（持久化），被移出后仍然指着那个已经不存在的团队。
+       * 不清的话，之后任何一个业务请求都会继续带这个 `X-Tenant-Id` 换回一次 403，
+       * 而拦截器里的兜底只看「有没有 currentTenantId」——有值就当「被移除」处理，
+       * 一边刷提示一边清缓存，页面看着像在抽风。
+       */
+      if (current !== null) store.clearCurrent();
       if (removed) {
         message.warning('你已不在该团队中，请创建团队或通过邀请加入');
       }

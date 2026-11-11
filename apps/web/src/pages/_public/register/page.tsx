@@ -4,10 +4,13 @@
  * 校验：`registerFormSchema` = 共享 registerBaseSchema + confirmPassword 一致性 + 团队名条件必填。
  * 提交：走真实接口 `POST /auth/register`（方案 01 §2.1 / §2.5）。
  *
- * 四种必须遵守的约束：
+ * 四条必须遵守的约束：
  * - 提交前要剔除 `confirmPassword`——它不属于接口契约，多传一个字段后端会 422。
- * - 注册成功**不下发令牌**（AC-01）：账号要等邮件激活才能登录，所以成功后只能
- *   把用户送回登录页并说明「去查收邮件」，不能假装已登录。
+ * - 注册成功**不下发令牌**（AC-01）：账号要等邮件激活才能登录。所以成功后**留在本页**
+ *   切到「验证邮件已发送」态，不跳登录页（v1.4）——刚填完注册表单就被送回登录页，
+ *   是最容易被理解成「我注册失败了」的一步；而验证链接点开就会自动登录（见
+ *   `verify-email/page.tsx`），这一屏之后再回登录页反而多余。「去登录」只作为
+ *   链接过期的兜底出口保留。
  * - `EMAIL_TAKEN` 要落到邮箱字段下方而不是弹 toast：这是字段级问题，
  *   用户需要知道改哪个输入框，浮层提示看完就没了。
  * - **受邀注册不显示「团队名称」**（v1.3）：从 `returnTo` 里认出 `/join?token=xxx`，
@@ -19,8 +22,10 @@ import { App, Button, Form, Input } from 'antd';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
 import { useLocation, useNavigate } from 'react-router';
+import { MailOutlined } from '@ant-design/icons';
 import type { RegisterInput } from '@saas/shared';
 import { AuthShell } from '@/components/auth/AuthShell';
+import { StateIcon } from '@/components/auth/AuthCard';
 import { COPY } from '@/constants/copy';
 import { authApi } from '@/shared/api/auth';
 import type { ApiError } from '@/shared/api/client';
@@ -43,6 +48,12 @@ export default function Register() {
   const location = useLocation();
   const { message } = App.useApp();
   const [submitting, setSubmitting] = useState(false);
+  /**
+   * 非空 = 已提交成功，当前展示「验证邮件已发送」态，值为收件邮箱。
+   * 用 state 而不是路由：这只是同一张卡片的两种形态，做成 `/register/sent`
+   * 会多一条路由、多一个刷新即失效的页面（刷新后收件邮箱就丢了）。
+   */
+  const [sentTo, setSentTo] = useState<string | null>(null);
 
   /**
    * 受邀注册的入口：`/join?token=xxx` 被 `RequireAuth` 拦到登录页时写进
@@ -97,12 +108,11 @@ export default function Register() {
     try {
       await authApi.register(payload);
       /**
-       * 把邮箱带到登录页：用户下一步就是「去登录」，不该让他再敲一遍。
-       * `returnTo` 必须继续带下去——受邀注册的用户登录后要回到 `/join` 完成加入，
-       * 在这里丢掉的话，他得回邮件里再点一次邀请链接（F-14 / AC-28）。
+       * 留在本页转「已发送」态，而不是跳登录页（v1.4）。
+       * 顺带把收件邮箱留在界面上——用户接下来要确认「邮件发到哪个地址了」，
+       * 跳到登录页的话这条信息只能靠一个可关闭的 Alert 承载。
        */
-      const target = returnTo ? `/login?returnTo=${encodeURIComponent(returnTo)}` : '/login';
-      navigate(target, { replace: true, state: { registeredEmail: payload.email } });
+      setSentTo(payload.email);
     } catch (error) {
       const err = error as ApiError;
       if (err.code === 'EMAIL_TAKEN') {
@@ -128,6 +138,39 @@ export default function Register() {
       setSubmitting(false);
     }
   };
+
+  /**
+   * 兜底出口：邮件一直没到 / 链接过期时，用户还得能去登录页。
+   * `returnTo` 必须继续带下去——受邀注册的人若始终没点验证信，登录后仍要回到
+   * `/join` 完成加入（F-14 / AC-28）。
+   */
+  const goLogin = () => {
+    const target = returnTo ? `/login?returnTo=${encodeURIComponent(returnTo)}` : '/login';
+    navigate(target, { replace: true, state: { registeredEmail: sentTo } });
+  };
+
+  // ── 已提交：验证邮件已发送 ────────────────────────────────
+  if (sentTo) {
+    return (
+      <AuthShell mode="register" privacy={COPY.auth.privacyRegister}>
+        <StateIcon icon={<MailOutlined />} />
+        <div className="mt-4 text-center text-base leading-6 font-semibold text-ink">
+          {REGISTER_COPY.sentTitle}
+        </div>
+        <div className="mt-1 text-center text-xs leading-[18px] text-ink-3">
+          {REGISTER_COPY.sentDesc(sentTo)}
+        </div>
+        <Button type="primary" block className="mt-6" onClick={goLogin}>
+          {REGISTER_COPY.sentLoginAction}
+        </Button>
+        <div className="mt-3 text-center">
+          <Button type="link" size="small" onClick={() => setSentTo(null)}>
+            {REGISTER_COPY.sentBackAction}
+          </Button>
+        </div>
+      </AuthShell>
+    );
+  }
 
   return (
     <AuthShell mode="register" privacy={COPY.auth.privacyRegister}>

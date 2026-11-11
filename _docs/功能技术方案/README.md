@@ -121,7 +121,7 @@
 
 | 编号 | 功能 | 状态 | 版本 | 涉及接口 |
 |------|------|------|------|---------|
-| 01 | 注册与登录 | 已实现 | v1.3 | POST /auth/register（可带 `inviteToken`）、/auth/verify-email、/auth/login、/auth/refresh、/auth/logout、GET /auth/me、GET /tenants |
+| 01 | 注册与登录 | 已实现 | v1.4 | POST /auth/register（可带 `inviteToken`）、/auth/verify-email（**验证即登录**，同 `login` 下发双令牌）、/auth/login、/auth/refresh、/auth/logout、GET /auth/me、GET /tenants |
 | 02 | 找回密码 | 已确认 | v1.1 | POST /auth/forgot-password、/auth/reset-password |
 | 03 | 多租户行级隔离 | 已实现 | v1.0 | 无新增接口（机制层） |
 | 04 | 租户创建与切换 | 已确认 | v1.0 | 无新增接口（切换为纯前端行为，复用 GET /tenants；创建进版本池） |

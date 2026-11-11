@@ -1,23 +1,28 @@
 /**
- * 邮箱验证结果页（设计稿 R11 / R12）
+ * 邮箱验证页（邮件链接的落点，`/verify-email?token=xxx`）
  *
- * 这个页面一进来就发请求，没有表单。三个必须注意的点：
+ * 这个页面一进来就发请求，没有表单，成功后**直接登录进工作台**（v1.4）。
+ * 四个必须注意的点：
  * - **StrictMode 双执行**：开发模式下 effect 跑两次，第二次令牌已被消费会返回 `TOKEN_INVALID`，
  *   页面就会「成功一下又变失败」。用 ref 门闩保证只提交一次，这不是保险而是必需。
+ * - **验证即登录**：接口现在和 `login` 一样返回 `accessToken`（refresh 走 httpOnly cookie），
+ *   拿到后写 store 即可。不要再插一个「去登录」按钮——那正是注册流程里被诟病的那一步：
+ *   注册 → 登录页 → 收信 → 验证 → 登录页 → 手打密码，五次跳转只为了回到起点。
+ * - **用 `replace` 跳转**：令牌已被消费，用户按返回键回到 `/verify-email?token=xxx`
+ *   只会看到「链接无效」，把这一步从历史里抹掉。
  * - **三态合并**：令牌不存在 / 已用 / 已过期，服务端统一抛 `TOKEN_INVALID`，
  *   前端也就只有「成功」和「失效」两态，不做更细的区分（区分了也没有可执行差异）。
- * - 成功不等于已登录：接口只返回 `{ verified, tenantId }`，没有 access token，
- *   所以主按钮去登录页而不是直接进工作台。
  */
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { Button, Spin } from 'antd';
-import { CheckOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { ClockCircleOutlined } from '@ant-design/icons';
 import { AuthCard, StateIcon } from '@/components/auth/AuthCard';
 import { authApi } from '@/shared/api/auth';
+import { useAuthStore } from '@/stores/auth';
 import { VERIFY_COPY } from './constants';
 
-type State = 'verifying' | 'success' | 'invalid';
+type State = 'verifying' | 'invalid';
 
 export default function VerifyEmail() {
   const [searchParams] = useSearchParams();
@@ -37,9 +42,17 @@ export default function VerifyEmail() {
 
     authApi
       .verifyEmail({ token })
-      .then(() => setState('success'))
+      .then(({ accessToken, user }) => {
+        /**
+         * 直接覆盖当前会话。这里不判断「是否已登录为别人」：点开自己邮箱里的验证链接
+         * 意图已经足够明确，加一层确认弹窗反而把"顺手在旧设备上激活新账号"这种
+         * 正常场景变成负担。
+         */
+        useAuthStore.getState().setSession(accessToken, user);
+        navigate('/app', { replace: true });
+      })
       .catch(() => setState('invalid'));
-  }, [token]);
+  }, [token, navigate]);
 
   if (state === 'verifying') {
     return (
@@ -48,32 +61,6 @@ export default function VerifyEmail() {
           <Spin />
           <div className="mt-4 text-sm leading-[22px] text-ink-3">{VERIFY_COPY.verifying}</div>
         </div>
-      </AuthCard>
-    );
-  }
-
-  // ── R11 验证成功 ────────────────────────────────────────────
-  if (state === 'success') {
-    return (
-      <AuthCard brand={false}>
-        <StateIcon icon={<CheckOutlined />} tone="success" />
-
-        <div className="mt-4 text-center text-base leading-6 font-semibold text-ink">
-          {VERIFY_COPY.successTitle}
-        </div>
-        <div className="mt-1 text-center text-xs leading-[18px] text-ink-3">
-          {VERIFY_COPY.successDesc}
-        </div>
-
-        {/*
-          这里**不再展示「团队已创建」卡片**（v1.3）：受邀注册验证后是加入别人的团队、
-          根本没有新建租户，而接口只返回 `{ verified, tenantId }`，前端分不出是哪种。
-          两种情况都成立的说法只有「邮箱已验证，请登录」，所以只留这一句。
-          团队信息等登录后在顶栏和头像下拉里看。
-        */}
-        <Button type="primary" block className="mt-6" onClick={() => navigate('/login')}>
-          {VERIFY_COPY.successAction}
-        </Button>
       </AuthCard>
     );
   }

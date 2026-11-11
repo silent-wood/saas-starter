@@ -22,9 +22,10 @@ import { PRISMA } from '../../prisma/prisma.module.ts';
  *    refreshToken.updateMany、$transaction
  *  - register 用：user.findUnique、invite.findUnique、$transaction（内部 user.create /
  *    user.update / emailToken.updateMany / emailToken.create）
- *  - verifyEmail 用：emailToken.findFirst、$transaction（内部 emailToken.updateMany /
- *    user.update / invite.findUnique / invite.update / membership.upsert /
- *    membership.create / tenant.create）
+ *  - verifyEmail 用：emailToken.findFirst、refreshToken.create、$transaction
+ *    （回调式：内部 emailToken.updateMany / user.update / invite.findUnique /
+ *    invite.update / membership.upsert / membership.create / tenant.create；
+ *    数组式：写会话那一步）
  */
 describe('AuthService - 找回密码', () => {
   let service: AuthService;
@@ -37,6 +38,7 @@ describe('AuthService - 找回密码', () => {
   let emailTokenUpdateMany: Mock;
   let userUpdate: Mock;
   let refreshTokenUpdateMany: Mock;
+  let refreshTokenCreate: Mock;
   let transaction: Mock;
   let sendResetPasswordEmail: Mock;
   // v1.3 受邀注册新增
@@ -46,6 +48,7 @@ describe('AuthService - 找回密码', () => {
   let membershipCreate: Mock;
   let tenantCreate: Mock;
   let sendVerifyEmail: Mock;
+  let auditRecord: Mock;
 
   beforeEach(async () => {
     userFindUnique = vi.fn();
@@ -55,6 +58,7 @@ describe('AuthService - 找回密码', () => {
     emailTokenUpdateMany = vi.fn();
     userUpdate = vi.fn();
     refreshTokenUpdateMany = vi.fn();
+    refreshTokenCreate = vi.fn();
     transaction = vi.fn();
     sendResetPasswordEmail = vi.fn();
     inviteFindUnique = vi.fn();
@@ -63,6 +67,7 @@ describe('AuthService - 找回密码', () => {
     membershipCreate = vi.fn();
     tenantCreate = vi.fn();
     sendVerifyEmail = vi.fn();
+    auditRecord = vi.fn();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -78,7 +83,7 @@ describe('AuthService - 找回密码', () => {
               findFirst: emailTokenFindFirst,
               updateMany: emailTokenUpdateMany,
             },
-            refreshToken: { updateMany: refreshTokenUpdateMany },
+            refreshToken: { updateMany: refreshTokenUpdateMany, create: refreshTokenCreate },
             invite: { findUnique: inviteFindUnique, update: inviteUpdate },
             membership: { upsert: membershipUpsert, create: membershipCreate },
             tenant: { create: tenantCreate },
@@ -92,8 +97,8 @@ describe('AuthService - 找回密码', () => {
           useValue: {
             createOpaqueToken: vi.fn(() => 'plaintext-token'),
             hashToken: vi.fn((t: string) => `hash:${t}`),
-            signAccessToken: vi.fn(),
-            refreshExpiresAt: vi.fn(),
+            signAccessToken: vi.fn(async () => 'access-token'),
+            refreshExpiresAt: vi.fn(() => new Date('2030-01-01T00:00:00.000Z')),
             refreshTtlMs: vi.fn(),
           },
         },
@@ -101,11 +106,11 @@ describe('AuthService - 找回密码', () => {
           provide: MailService,
           useValue: { sendResetPasswordEmail, sendVerifyEmail },
         },
-        // 登录审计的旁路写入（05 方案 AC-15）。本文件不测审计，
-        // 但构造函数多了一个依赖，不 provide 会解析失败
+        // 登录审计的旁路写入（05 方案 AC-15 / v1.4 的验证即登录）。本文件只在
+        // 「验证即登录」那条用例里断言它，其余用例不关心
         {
           provide: AuditService,
-          useValue: { record: vi.fn() },
+          useValue: { record: auditRecord },
         },
       ],
     }).compile();
@@ -264,16 +269,22 @@ describe('AuthService - 找回密码', () => {
     tenant: { deletedAt: null },
   };
 
-  /** 事务透传执行器：tx 直接给到下面这组 mock */
+  /**
+   * 事务透传执行器：回调式事务把 tx 直接给到下面这组 mock；
+   * 数组式事务（`$transaction([...])`，verifyEmail 写会话那一步用的就是它）直接 await。
+   * 两种形态都要认——只处理回调式，数组式会把数组当函数调，报「arg is not a function」。
+   */
   const runTx = () =>
-    transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
-      fn({
-        emailToken: { updateMany: emailTokenUpdateMany, create: emailTokenCreate },
-        user: { update: userUpdate, create: userCreate },
-        invite: { findUnique: inviteFindUnique, update: inviteUpdate },
-        membership: { upsert: membershipUpsert, create: membershipCreate },
-        tenant: { create: tenantCreate },
-      }),
+    transaction.mockImplementation(async (arg: unknown) =>
+      typeof arg === 'function'
+        ? (arg as (tx: unknown) => Promise<unknown>)({
+            emailToken: { updateMany: emailTokenUpdateMany, create: emailTokenCreate },
+            user: { update: userUpdate, create: userCreate },
+            invite: { findUnique: inviteFindUnique, update: inviteUpdate },
+            membership: { upsert: membershipUpsert, create: membershipCreate },
+            tenant: { create: tenantCreate },
+          })
+        : Promise.all(arg as Promise<unknown>[]),
     );
 
   describe('register（受邀注册）', () => {
@@ -381,7 +392,7 @@ describe('AuthService - 找回密码', () => {
 
       const result = await service.verifyEmail('plaintext-token');
 
-      expect(result).toEqual({ verified: true, tenantId: 't_1' });
+      expect(result).toMatchObject({ verified: true, tenantId: 't_1' });
 
       // upsert 而不是 create：被移出过的人身上已有 removed 行（唯一约束决定只能复用）
       expect(membershipUpsert).toHaveBeenCalledWith({
@@ -415,7 +426,7 @@ describe('AuthService - 找回密码', () => {
 
       const result = await service.verifyEmail('plaintext-token');
 
-      expect(result).toEqual({ verified: true, tenantId: 't_fallback' });
+      expect(result).toMatchObject({ verified: true, tenantId: 't_fallback' });
       expect(tenantCreate).toHaveBeenCalledWith({
         data: { name: '张三 的团队', ownerId: 'u1' },
       });
@@ -433,7 +444,7 @@ describe('AuthService - 找回密码', () => {
 
       const result = await service.verifyEmail('plaintext-token');
 
-      expect(result).toEqual({ verified: true, tenantId: 't_2' });
+      expect(result).toMatchObject({ verified: true, tenantId: 't_2' });
       expect(tenantCreate).toHaveBeenCalledWith({
         data: { name: '星河科技', ownerId: 'u1' },
       });
@@ -441,6 +452,44 @@ describe('AuthService - 找回密码', () => {
         data: expect.objectContaining({ role: 'owner' }),
       });
       expect(inviteFindUnique).not.toHaveBeenCalled();
+    });
+
+    /**
+     * v1.4「验证即登录」的核心断言：验证通过 = 一次登录，令牌与会话记录都要有。
+     * 少任何一项，前端就只能把用户再送回登录页（这正是要消灭的那一步）。
+     */
+    it('验证通过即登录：下发 access + refresh，落会话记录，用户带 emailVerified', async () => {
+      emailTokenFindFirst.mockResolvedValue(recordWith({ tenantName: '星河科技' }));
+      tenantCreate.mockResolvedValue({ id: 't_2' });
+      auditRecord.mockClear();
+
+      const result = await service.verifyEmail('plaintext-token', '10.0.0.8');
+
+      expect(result.accessToken).toBe('access-token');
+      expect(result.refreshToken).toBe('plaintext-token');
+      // 事务前读出来的 user 快照 emailVerifiedAt 还是 null，返回体必须是已验证
+      expect(result.user).toMatchObject({ id: 'u1', emailVerified: true });
+      // refresh 只存哈希，明文只出现在 cookie 里
+      expect(refreshTokenCreate).toHaveBeenCalledWith({
+        data: {
+          userId: 'u1',
+          tokenHash: 'hash:plaintext-token',
+          expiresAt: new Date('2030-01-01T00:00:00.000Z'),
+        },
+      });
+      // 登录时间与 login 一致地更新，审计里能看出这是一次登录
+      expect(userUpdate).toHaveBeenCalledWith({
+        where: { id: 'u1' },
+        data: { lastLoginAt: expect.any(Date) },
+      });
+      expect(auditRecord).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'auth.login',
+          actorUserId: 'u1',
+          ip: '10.0.0.8',
+          detail: { method: 'POST', path: '/auth/verify-email' },
+        }),
+      );
     });
 
     it('payload 的 tenantName 是空串（老数据）→ 用「昵称 的团队」兜底', async () => {

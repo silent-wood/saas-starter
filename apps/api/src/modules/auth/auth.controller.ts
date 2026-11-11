@@ -88,13 +88,28 @@ export class AuthController {
     return this.authService.register(body);
   }
 
+  /**
+   * 验证邮箱并**直接登录**（v1.4）：成功后与 `login` 一样下发 access + refresh cookie，
+   * 前端拿到即写 store 进工作台，不再要求用户回登录页手打密码。
+   *
+   * 仍然值得保留 `@Public()`：邮件链接可能在任意设备/浏览器打开，此时没有任何登录态。
+   */
   @Public()
   @Post('verify-email')
   @HttpCode(HttpStatus.OK)
-  verifyEmail(
+  async verifyEmail(
     @Body({ schema: verifyEmailSchema }) body: VerifyEmailInput,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<VerifyEmailResult> {
-    return this.authService.verifyEmail(body.token);
+    const { accessToken, refreshToken, tenantId, user } = await this.authService.verifyEmail(
+      body.token,
+      req.ip,
+    );
+    // refresh 只走 httpOnly cookie，与 login 共用同一套参数（path 必须是 /api/v1/auth，
+    // 否则浏览器不会在 refresh 请求上带它）
+    this.setRefreshCookie(res, refreshToken);
+    return { verified: true, tenantId, accessToken, user };
   }
 
   @Public()

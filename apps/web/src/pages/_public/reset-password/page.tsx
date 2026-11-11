@@ -164,3 +164,6 @@ function HintItem({ ok, text }: { ok: boolean; text: string }) {
     </div>
   );
 }
+
+/** 约定式路由只认 default 导出（见 app/routes/build.tsx 的 lazy 挂载） */
+export default ResetPassword;

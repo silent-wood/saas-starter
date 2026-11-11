@@ -12,7 +12,7 @@ import { RequireAuth } from '@/app/guards/RequireAuth';
 import { RequirePermission } from '@/app/guards/RequirePermission';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { routeTree } from './scan';
-import { GROUP_RULES, type RouteNode } from './types';
+import { GROUP_RULES, type PageModule, type RouteNode } from './types';
 
 /** 懒加载占位：用常量 JSX 而不是定义组件，避免本文件出现「组件 + 非组件混合导出」 */
 const fallback = (
@@ -23,7 +23,24 @@ const fallback = (
 
 /** 叶子页面 */
 function pageElement(node: RouteNode): ReactNode {
-  const Lazy = lazy(node.loader!);
+  /**
+   * loader 包一层再交给 lazy，只为把「缺 default 导出」翻译成人话。
+   *
+   * `import.meta.glob` 的模块形状由 TS 推导成 `PageModule`，但那是**声明**不是事实：
+   * 写成 `export const Foo = () => ...` 照样能编译，运行时 lazy 拿到的是模块命名空间
+   * 对象（原型为 null），React 连错误都描述不出来，浏览器里只剩一句
+   * `Cannot convert object to primitive value`（已在 select-tenant 上真实踩过）。
+   * 这里补一道运行时断言，把成本从「猜半天」降到「看一行」；静态护栏见 routes.test.ts。
+   */
+  const Lazy = lazy(async () => {
+    const mod = (await node.loader!()) as Partial<PageModule>;
+    if (!mod.default) {
+      throw new Error(
+        `${node.dir}/page.tsx 缺少 default 导出：约定式路由用 lazy 挂载页面，命名导出不会被渲染`,
+      );
+    }
+    return mod as PageModule;
+  });
   const page = (
     <Suspense fallback={fallback}>
       <Lazy />

@@ -61,9 +61,11 @@ describe('SelectTenant', () => {
 
     renderPage();
 
-    expect(await screen.findByText('还没有加入任何团队')).toBeInTheDocument();
+    expect(await screen.findByText('你当前不属于任何团队')).toBeInTheDocument();
     expect(
-      screen.getByText('创建一个新团队开始协作，或通过管理员发来的邀请链接加入'),
+      screen.getByText(
+        '创建一个新团队即可继续使用；如果刚被移出原团队，也可以联系管理员重新发送邀请链接',
+      ),
     ).toBeInTheDocument();
     expect(screen.getByLabelText('团队名称')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '创建团队' })).toBeInTheDocument();

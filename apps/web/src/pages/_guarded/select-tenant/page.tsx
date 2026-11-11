@@ -12,6 +12,10 @@
  * - **无团队**：引导创建团队。没有这个出口，被移出的用户会只剩「退出登录」一条路，
  *   而重新加入还得找人发邀请 —— 自己建一个团队是最短的恢复路径
  *
+ * **必须 `export default`**：约定式路由用 `lazy(() => import(...))` + `<Lazy />` 挂载，
+ * 缺默认导出时 React 拿到的是模块命名空间对象（原型为 null），连报错都无从读起 ——
+ * 浏览器只抛一句 `Cannot convert object to primitive value`。`routes.test.ts` 有护栏。
+ *
  * 数据用 react-query 的 `['tenants']` 键，与 `useTenantRouting` 共用同一份缓存：
  * 跳过来时列表已在缓存里，不会闪一下 loading。
  *
@@ -173,3 +177,6 @@ export const SelectTenant = () => {
     </AuthCard>
   );
 };
+
+/** 约定式路由只认 default 导出，命名导出仅供单测直接引用 */
+export default SelectTenant;

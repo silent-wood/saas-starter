@@ -145,3 +145,6 @@ export const ForgotPassword = () => {
     </AuthCard>
   );
 };
+
+/** 约定式路由只认 default 导出（见 app/routes/build.tsx 的 lazy 挂载） */
+export default ForgotPassword;

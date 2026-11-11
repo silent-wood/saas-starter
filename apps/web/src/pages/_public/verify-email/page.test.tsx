@@ -1,8 +1,9 @@
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { App as AntdApp } from 'antd';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { authApi } from '@/shared/api/auth';
+import { useAuthStore } from '@/stores/auth';
 import VerifyEmail from './page';
 
 vi.mock('@/shared/api/auth', () => ({
@@ -13,7 +14,12 @@ function renderPage(entry: string) {
   return render(
     <MemoryRouter initialEntries={[entry]}>
       <AntdApp>
-        <VerifyEmail />
+        <Routes>
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          {/* 验证通过后应直接进工作台（不是回登录页），用占位页接住跳转 */}
+          <Route path="/app" element={<div>工作台占位</div>} />
+          <Route path="/login" element={<div>登录页占位</div>} />
+        </Routes>
       </AntdApp>
     </MemoryRouter>,
   );
@@ -22,6 +28,7 @@ function renderPage(entry: string) {
 describe('VerifyEmail', () => {
   beforeEach(() => {
     vi.mocked(authApi.verifyEmail).mockReset();
+    useAuthStore.setState({ accessToken: null, user: null, status: 'booting' });
   });
 
   it('没有 token 时直接是 R12 失效态，且不发起请求', () => {
@@ -33,20 +40,32 @@ describe('VerifyEmail', () => {
     expect(authApi.verifyEmail).not.toHaveBeenCalled();
   });
 
-  it('验证通过时展示 R11 成功态：不再承诺「团队已创建」', async () => {
-    vi.mocked(authApi.verifyEmail).mockResolvedValue({ verified: true, tenantId: 't_1' });
+  it('验证通过即登录：写入会话并直接进工作台，不经过登录页', async () => {
+    vi.mocked(authApi.verifyEmail).mockResolvedValue({
+      verified: true,
+      tenantId: 't_1',
+      accessToken: 'at_1',
+      user: {
+        id: 'u1',
+        email: 'invitee@example.com',
+        name: '张三',
+        emailVerified: true,
+        avatarUrl: null,
+      },
+    });
 
     renderPage('/verify-email?token=ok');
 
-    expect(await screen.findByText('邮箱已验证')).toBeInTheDocument();
-    expect(screen.getByText('账号已激活，从现在起可以登录。')).toBeInTheDocument();
-    // v1.3：受邀注册验证后是加入别人的团队，压根没有新建租户，
-    // 而接口只返回 tenantId、分不出是哪种，所以这句不能出现
-    expect(screen.queryByText('团队空间已创建')).not.toBeInTheDocument();
-    expect(screen.queryByText('你是该团队 Owner')).not.toBeInTheDocument();
-    // 成功不等于已登录：主按钮去登录页，不直接进工作台
-    expect(screen.getByRole('button', { name: /去登录/ })).toBeInTheDocument();
+    expect(await screen.findByText('工作台占位')).toBeInTheDocument();
+    // v1.4：验证即登录，store 里必须直接有会话
+    expect(useAuthStore.getState().accessToken).toBe('at_1');
+    expect(useAuthStore.getState().user?.email).toBe('invitee@example.com');
+    expect(useAuthStore.getState().status).toBe('authenticated');
+    // 不再有「去登录」这一步，也不该被送回登录页
+    expect(screen.queryByText('登录页占位')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /去登录/ })).not.toBeInTheDocument();
     expect(authApi.verifyEmail).toHaveBeenCalledWith({ token: 'ok' });
+    // StrictMode 外的门闩也要保证只提交一次：令牌一次性，第二次必然 TOKEN_INVALID
     expect(authApi.verifyEmail).toHaveBeenCalledTimes(1);
   });
 
@@ -57,5 +76,8 @@ describe('VerifyEmail', () => {
 
     expect(await screen.findByText('链接无效或已过期')).toBeInTheDocument();
     expect(screen.getByText('重新提交注册可再收一封验证邮件')).toBeInTheDocument();
+    // 失败不能把用户带进工作台
+    expect(screen.queryByText('工作台占位')).not.toBeInTheDocument();
+    expect(useAuthStore.getState().accessToken).toBeNull();
   });
 });

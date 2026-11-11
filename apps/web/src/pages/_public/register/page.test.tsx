@@ -15,7 +15,7 @@ function renderRegister(entry = '/register') {
       <AntdApp>
         <Routes>
           <Route path="/register" element={<Register />} />
-          {/* 真实的路由跳转用一个占位页接住，验证注册成功后确实离开本页 */}
+          {/* 跳转占位：「已发送」态里的「去登录」走这条路；也用于断言失败时不离开本页 */}
           <Route path="/login" element={<div>登录页占位</div>} />
         </Routes>
       </AntdApp>
@@ -83,7 +83,7 @@ describe('Register', () => {
     expect(authApi.register).not.toHaveBeenCalled();
   });
 
-  it('提交真实接口：剔除 confirmPassword，成功后跳登录页', async () => {
+  it('提交真实接口：剔除 confirmPassword，成功后留在本页展示「验证邮件已发送」', async () => {
     vi.mocked(authApi.register).mockResolvedValue({
       userId: 'usr_1',
       email: 'me@example.com',
@@ -93,7 +93,10 @@ describe('Register', () => {
     fillValidForm();
     fireEvent.click(screen.getByRole('button', { name: /注\s*册/ }));
 
-    expect(await screen.findByText('登录页占位')).toBeInTheDocument();
+    // v1.4：注册成功不再跳登录页（那一步最容易被理解成「注册失败」）
+    expect(await screen.findByText('验证邮件已发送')).toBeInTheDocument();
+    expect(screen.getByText(/me@example\.com/)).toBeInTheDocument();
+    expect(screen.queryByText('登录页占位')).not.toBeInTheDocument();
     // 关键：confirmPassword 是纯前端字段，多传一个后端会 422
     expect(authApi.register).toHaveBeenCalledWith({
       tenantName: '星河科技',
@@ -101,6 +104,24 @@ describe('Register', () => {
       email: 'me@example.com',
       password: 'Passw0rd',
     });
+  });
+
+  it('「没收到」回到表单、邮箱保留，便于重发验证信', async () => {
+    vi.mocked(authApi.register).mockResolvedValue({
+      userId: 'usr_1',
+      email: 'me@example.com',
+    });
+
+    renderRegister();
+    fillValidForm();
+    fireEvent.click(screen.getByRole('button', { name: /注\s*册/ }));
+    await screen.findByText('验证邮件已发送');
+
+    fireEvent.click(screen.getByRole('button', { name: /返回修改并重发/ }));
+
+    // 回到表单且表单内容还在（react-hook-form 的 store 未销毁）
+    expect(screen.getByPlaceholderText('you@example.com')).toHaveValue('me@example.com');
+    expect(screen.queryByText('验证邮件已发送')).not.toBeInTheDocument();
   });
 
   it('EMAIL_TAKEN 落到邮箱字段下方，而不是弹一层就消失的 toast', async () => {
@@ -144,7 +165,7 @@ describe('Register', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /注\s*册/ }));
 
-    expect(await screen.findByText('登录页占位')).toBeInTheDocument();
+    expect(await screen.findByText('验证邮件已发送')).toBeInTheDocument();
     // 没有 tenantName，多了 inviteToken —— 后端据此跳过建团队
     expect(authApi.register).toHaveBeenCalledWith({
       name: '张三',

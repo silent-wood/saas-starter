@@ -12,6 +12,7 @@
  * 加入成功后要把新团队写进 store 再切换：`switchTenant` 只改 id 不清列表，
  * 列表里没有这个团队时头像下拉会渲染成空。
  */
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router';
 import { App, Button, Spin, Typography } from 'antd';
@@ -43,17 +44,63 @@ export const JoinPage = () => {
     retry: false,
   });
 
-  const accept = useMutation<AcceptInviteResult, ApiError>({
+  /**
+   * 进入团队：手动「加入团队」与自动放行共用这一段。
+   * 先补列表再切换 —— `switchTenant` 不清租户列表，缺这一行头像下拉会渲染成空。
+   */
+  const enterTenant = async (tenant: AcceptInviteResult) => {
+    setTenants([...tenants.filter((t) => t.id !== tenant.id), tenant]);
+    await switchTenant(tenant.id);
+    message.success(`已进入「${tenant.name}」`);
+    navigate('/app', { replace: true });
+  };
+
+  // 两个回调都不挂在 mutation 上：手动路径要 toast，自动路径要落成卡片而不是弹窗，
+  // 挂在全局 onError 里会变成「卡片 + 同样文案的 toast」各说一遍
+  const accept = useMutation<AcceptInviteResult, ApiError, void>({
     mutationFn: () => memberApi.acceptInvite({ token }),
-    onSuccess: async (tenant) => {
-      // 先补进列表再切：switchTenant 不清租户列表，缺这一行头像下拉会空
-      setTenants([...tenants.filter((t) => t.id !== tenant.id), tenant]);
-      await switchTenant(tenant.id);
-      message.success(`已加入「${tenant.name}」`);
-      navigate('/app', { replace: true });
-    },
-    onError: (error) => message.error(errorText(error)),
   });
+
+  const join = () =>
+    accept.mutate(undefined, {
+      onSuccess: (tenant) => void enterTenant(tenant),
+      onError: (error) => message.error(errorText(error)),
+    });
+
+  /**
+   * 已接受的邀请**自动放行一次**，成功就直接进团队，不必让用户先看到一句
+   * 「这条邀请已被使用」再自己找路回工作台。
+   *
+   * 为什么不给后端加「我是不是成员」字段：`acceptInvite` 对「已是 active 成员」
+   * 本来就是幂等返回（05 AC-07），调一次就能分辨三种结果，契约不用动：
+   *  - 200 → 他确实是成员（重复点链接、或受邀注册验证邮箱后就已入团），切租户进工作台
+   *  - 410 → 邀请用过了但成员关系已不在（被移出），提示找管理员重发
+   *  - 409 → 邮箱不匹配 / 被禁用，直接说后端给的原因
+   *
+   * 结果落在本地 state（`autoError`）而不是读 `accept.isError`：这三条分支的唯一输入
+   * 就是「失败原因」，把它直接存下来，渲染不依赖 mutation 状态在多次重渲染之间的同步时机。
+   *
+   * 自动这条不走 `accept`（那个 mutation 只服务「加入团队」按钮），也不在 effect 里
+   * 直接引用 `enterTenant`：`switchTenant` 每次渲染都是新函数，把它带进依赖会让 effect
+   * 每帧重跑一遍。改成走 ref 取最新值——effect 依赖只剩 `token` 与
+   * `preview.data.accepted` 两个原语，去重靠 `autoTried` 门闩。
+   */
+  const [autoError, setAutoError] = useState<ApiError | null>(null);
+  const enterTenantRef = useRef(enterTenant);
+  useEffect(() => {
+    // 无依赖数组：每次渲染后把最新的闭包写进 ref，供下面的 effect 调用
+    enterTenantRef.current = enterTenant;
+  });
+
+  const autoTried = useRef(false);
+  useEffect(() => {
+    if (!preview.data?.accepted || autoTried.current) return;
+    autoTried.current = true;
+    memberApi
+      .acceptInvite({ token })
+      .then((tenant) => void enterTenantRef.current(tenant))
+      .catch((error: ApiError) => setAutoError(error));
+  }, [preview.data?.accepted, token]);
 
   const leave = () => navigate('/app', { replace: true });
 
@@ -103,17 +150,32 @@ export const JoinPage = () => {
   const invite = preview.data;
 
   /**
-   * 已接受：**不能断言「你已在该团队中」**。
+   * 已接受：交给上面的自动放行去判定，只有**确实进不去**时才提示。
    *
-   * `remove()` 只改 `membership.status`，不动 invite，所以被移出的人点旧链接时
-   * `status` 仍是 `accepted`，会走到这里。原先写「你已在该团队中，可以直接切换过去」
-   * 在那个场景下是假话——他一个团队都没有。改成只陈述事实（这条邀请用过了），
-   * 「返回工作台」两种情况都去对了地方：还在团队就正常进，不在就落到引导页。
+   * 不能无条件说「你已在该团队中」（`remove()` 只改 membership、不动 invite，
+   * 被移出的人点旧链接时 `status` 仍是 `accepted`，那句话在那个场景下是假的），
+   * 也不要无条件说「已被使用」—— 入团后正常再点一次链接的人会看到这句误导文案，
+   * 而 `acceptInvite` 的幂等分支本来就能把他直接送进团队。
    */
   if (invite.accepted) {
-    return renderNotice(
-      '这条邀请已被使用',
-      `「${invite.tenantName}」的邀请已经用过。仍在团队中可直接返回工作台；若已不在该团队，请联系管理员重新发送邀请。`,
+    if (autoError) {
+      return autoError.code === ERROR_CODES.TOKEN_INVALID
+        ? renderNotice(
+            '这条邀请已被使用',
+            `「${invite.tenantName}」的邀请已经用过，且你当前不在该团队中。请联系管理员重新发送邀请。`,
+          )
+        : renderNotice('无法进入团队', errorText(autoError));
+    }
+    // 自动放行进行中（成功后立即被 navigate 带走，这一屏通常只闪一下）
+    return (
+      <AuthCard brand={false}>
+        <div className="flex flex-col items-center py-4">
+          <Spin size="small" />
+          <div className="mt-2 text-xs leading-[18px] text-ink-3">
+            正在确认你在「{invite.tenantName}」的成员身份…
+          </div>
+        </div>
+      </AuthCard>
     );
   }
   if (invite.expired) {
@@ -140,13 +202,7 @@ export const JoinPage = () => {
         </Typography.Text>
       </div>
 
-      <Button
-        type="primary"
-        block
-        className="mt-6"
-        loading={accept.isPending}
-        onClick={() => accept.mutate()}
-      >
+      <Button type="primary" block className="mt-6" loading={accept.isPending} onClick={join}>
         加入团队
       </Button>
       <div className="mt-3 text-center">

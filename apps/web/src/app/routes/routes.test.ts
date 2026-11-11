@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { conventionRoutes } from './build';
 import { findRouteNode, menuFromTree, menuOwner } from './menu';
 import { appRoot, routeTree, routeViolations } from './scan';
-import type { RouteNode } from './types';
+import type { RouteNode, PageModule } from './types';
 
 function collectPaths(routes: RouteObject[], prefix = ''): string[] {
   const paths: string[] = [];
@@ -88,5 +88,27 @@ describe('约定式路由', () => {
 
   it('权限沿目录继承：回收站节点带 trash.manage', () => {
     expect(findRouteNode(routeTree, '/app/trash')?.permission).toBe('trash.manage');
+  });
+});
+
+/**
+ * 页面导出形态的护栏
+ *
+ * 约定式路由用 `lazy(() => import(...))` + `<Lazy />` 挂载页面，**只认 default 导出**。
+ * 写成 `export const Foo = () => ...` 不会编译报错，只会在打开那条路由时炸掉：
+ * lazy 得到的是模块命名空间对象（原型为 null），React 连错误都描述不出来，浏览器里
+ * 只剩一句 `Cannot convert object to primitive value`。三条路由（select-tenant /
+ * forgot-password / reset-password）都栽在同一处，所以把约定锁进测试。
+ */
+describe('页面模块导出形态', () => {
+  it('每个 page.tsx 都有 default 导出', () => {
+    const modules = import.meta.glob<PageModule>('/src/pages/**/page.tsx', { eager: true });
+    const missing = Object.entries(modules)
+      .filter(([, mod]) => !mod.default)
+      .map(([key]) => key);
+
+    // 断言非空，避免 glob 路径写错时「零个模块」也判通过
+    expect(Object.keys(modules).length).toBeGreaterThan(0);
+    expect(missing).toEqual([]);
   });
 });
