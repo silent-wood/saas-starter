@@ -68,4 +68,41 @@ export class TenantsService {
       lastActiveAt: m.lastActiveAt?.toISOString() ?? null,
     }));
   }
+
+  /**
+   * 创建团队，创建者即 owner。
+   *
+   * 为什么必须是事务：`tenants` 与 `memberships` 是两条独立写入，中间失败会留下
+   * 「有团队、没有成员」的孤儿租户 —— 它不会出现在任何人的 `GET /tenants` 里，
+   * 用户下次登录既看不到这个团队、也无法再创建同名团队，只能由运维手工清理。
+   *
+   * 不做重名检查：同名团队是正常业务（见契约注释），唯一性靠 id。
+   *
+   * 不走 `@Audit`：审计拦截器要求已有租户上下文（`X-Tenant-Id`），而这个接口
+   * 本身就是「创建上下文之前」的调用。要记的话得让拦截器支持以新建租户为 tenantId，
+   * 属于审计模块的增量，不在本次范围。
+   */
+  async create(userId: string, name: string): Promise<TenantListItem> {
+    return this.prisma.$transaction(async (tx) => {
+      const tenant = await tx.tenant.create({
+        data: { name, ownerId: userId },
+        select: { id: true, name: true },
+      });
+
+      // 创建者直接落 owner + active：不落 membership 的话 TenantGuard 会
+      // 以 TENANT_MISMATCH 拒绝他访问自己刚建的团队
+      await tx.membership.create({
+        data: { tenantId: tenant.id, userId, role: 'owner', status: 'active' },
+      });
+
+      // 刚建好的团队没有业务数据，lastActiveAt 为空即可；用户进入后由守卫更新
+      return {
+        id: tenant.id,
+        name: tenant.name,
+        role: 'owner' as const,
+        status: 'active' as const,
+        lastActiveAt: null,
+      };
+    });
+  }
 }

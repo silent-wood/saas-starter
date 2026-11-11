@@ -19,12 +19,14 @@ export const tenantContext = new AsyncLocalStorage<{ tenantId: string }>();
  *
  * ⚠️ 这里只列【当前 schema 里真实存在】且含 tenant_id 列的业务模型：
  *   - AiDocument / AiChunk：AI 知识库文档与切片（M4 用，表已建）
+ *   - Resource：资源域业务实体（M2 步骤 8，表已建）
  *   - Membership：故意【不】放进白名单，见下方说明
  *
- * 文档 8.2 原样里的一长串（Resource / File / Subscription / Invoice ...）都是
- * 后续里程碑才建的表，现在列进来会引用不存在的模型名，编译不过，等建表时再补。
+ * 文档 8.2 原样里的一长串（File / Subscription / Invoice ...）都是后续里程碑
+ * 才建的表，现在列进来会引用不存在的模型名，编译不过，等建表时再补。
+ * 新建含 tenant_id 的表后忘了加这里，隔离会静默失效：查询不报错、但跨租户返回数据。
  */
-const TENANT_SCOPE = new Set(['AiDocument', 'AiChunk']);
+const TENANT_SCOPE = new Set(['AiDocument', 'AiChunk', 'Resource']);
 
 /**
  * 为什么不把 Membership 放进白名单？

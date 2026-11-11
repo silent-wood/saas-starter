@@ -41,7 +41,7 @@
 
 一次改动视为完成，需同时满足：
 
-1. `pnpm turbo run lint typecheck test` 全绿
+1. `pnpm turbo run lint typecheck test` 全绿（**验证时机：提交之前跑一次即可，日常迭代改完不必每步都跑**，除非用户要求）
 2. 提交信息通过 commitlint（见下方规范），不允许 `--no-verify` 绕过钩子
 3. 接口契约变更时，同步更新 `packages/shared` 的类型 / schema
 4. 行为或约定变化涉及 `_docs/` 既有文档的，在提交说明中指出（文档本身只追加修订）

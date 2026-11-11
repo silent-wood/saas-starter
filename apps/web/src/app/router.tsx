@@ -1,61 +1,23 @@
-import { lazy, Suspense } from 'react';
+/**
+ * 路由表：业务路由由 src/pages 的约定目录自动生成
+ *
+ * 这里只留无法归入分组的全局兜底：
+ * - `/` 重定向到工作台
+ * - `/403` 页面级 403 的跳转落点（权限守卫本身原地渲染，不改 URL）
+ * - `*` 404 兜底，必须最后一条
+ *
+ * 新增页面不要改这个文件：建目录 + page.tsx + meta.ts 即可（规则见 app/routes/scan.ts）。
+ * 登录边界由目录分组决定：_public 无需登录、_guarded 需登录无布局、app 需登录 + 布局 + 菜单。
+ */
 import { createBrowserRouter, Navigate } from 'react-router';
-import { Spin } from 'antd';
-import Login from '@/pages/Login';
-import Register from '@/pages/Register';
-import Dashboard from '@/pages/Dashboard';
-import { RequireAuth } from '@/app/guards/RequireAuth';
-import { AuthLayout } from '@/app/AuthLayout';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
-import NotFound from '@/pages/NotFound';
+import { conventionRoutes } from '@/app/routes/build';
 import Forbidden from '@/pages/Forbidden';
-import VerifyEmail from '@/pages/VerifyEmail';
-import { ForgotPassword } from '@/pages/ForgotPassword';
-import { SelectTenant } from '@/pages/SelectTenant';
-import { ResetPassword } from '@/pages/ResetPassword';
-
-const Resources = lazy(() => import('@/pages/Resource'));
+import NotFound from '@/pages/NotFound';
 
 const router = createBrowserRouter([
-  { path: '/login', element: <Login /> },
-  { path: '/register', element: <Register /> },
-  { path: '/verify-email', element: <VerifyEmail /> }, // 新增，公开
-  { path: '/forgot-password', element: <ForgotPassword /> }, // 新增，公开
-  { path: '/reset-password', element: <ResetPassword /> }, // 新增，公开
-  {
-    path: '/select-tenant', // 新增，需登录但无布局
-    element: (
-      <RequireAuth>
-        <SelectTenant />
-      </RequireAuth>
-    ),
-  },
-  {
-    path: '/app',
-    element: (
-      <RequireAuth>
-        <AuthLayout />
-      </RequireAuth>
-    ),
-    children: [
-      { index: true, element: <Dashboard /> },
-      {
-        path: 'resources',
-        element: (
-          // 路由级错误边界（规范 §18）：懒加载页崩溃只白屏该页，重试不刷新整站
-          <ErrorBoundary scene="resources">
-            <Suspense fallback={<Spin />}>
-              <Resources />
-            </Suspense>
-          </ErrorBoundary>
-        ),
-      },
-    ],
-  },
-  // 403：接口返回 403 时由页面级逻辑跳转过来（规范 §18：403 属页面级处理，不做全局拦截跳转）
+  ...conventionRoutes,
   { path: '/403', element: <Forbidden /> },
   { path: '/', element: <Navigate to="/app" replace /> },
-  // 404 兜底：匹配所有未定义路径，必须置于路由表末尾
   { path: '*', element: <NotFound /> },
 ]);
 

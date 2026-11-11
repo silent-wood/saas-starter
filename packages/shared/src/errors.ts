@@ -42,6 +42,9 @@ export const ERROR_CODES = {
   // 资源状态冲突：注册邮箱重复、成员状态非法等。
   // 未显式带 code 的ConflictException 落到这里
   CONFLICT: 'CONFLICT',
+  // 资源族：资源不存在，或存在但不属于当前租户。
+  // 跨租户访问统一返回它而非 TENANT_MISMATCH，避免暴露"这个 id 真实存在"（见 TSD §4.x 错误提示表）
+  RESOURCE_NOT_FOUND: 'RESOURCE_NOT_FOUND',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

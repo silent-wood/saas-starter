@@ -8,7 +8,10 @@ import type { Role } from './roles.js';
 // ─────────────────────────────────────────────────────────────
 export const PERMISSIONS = {
   'resource.read': ['member', 'admin', 'owner'],
-  'resource.write': ['member', 'admin', 'owner'],
+  // 07 方案 D-01 拍板：写操作收紧到 admin 起，member 只读。
+  // 原型图 S3「member 不显示新建按钮、操作列只有查看」是产品定义；
+  // 《技术方案设计》§4.6 原写「资源增删改 member ✅」属早期草图，已在 07 方案记偏差。
+  'resource.write': ['admin', 'owner'],
   'file.upload': ['member', 'admin', 'owner'],
   'trash.manage': ['admin', 'owner'],
   'audit.view': ['admin', 'owner'],

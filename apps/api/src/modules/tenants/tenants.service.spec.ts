@@ -27,10 +27,21 @@ describe('TenantsService', () => {
   let service: TenantsService;
   // listByUser 只碰 membership.findMany 一个方法，只 mock 它，其余方法不 stub
   let findMany: Mock;
+  // create 走事务：$transaction 的 cb 会被调用并拿到 tx，tx 上只有 tenant/membership 的 create
+  let tenantCreate: Mock;
+  let membershipCreate: Mock;
+  let transaction: Mock;
 
   beforeEach(async () => {
     // 每个用例前重置 mock，避免上一个用例的调用记录/返回值串到下一个
     findMany = vi.fn();
+    tenantCreate = vi.fn();
+    membershipCreate = vi.fn();
+    // 事务在测试里就是「立刻执行回调并把 tx 递进去」，事务回滚语义由 Prisma 保证，
+    // 这里只验证「两条写入都在同一个事务里发生」
+    transaction = vi.fn(async (cb: (tx: unknown) => unknown) =>
+      cb({ tenant: { create: tenantCreate }, membership: { create: membershipCreate } }),
+    );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -38,10 +49,10 @@ describe('TenantsService', () => {
         {
           // 用假对象顶掉真实的扩展 client（PRISMA token）：单测不连库。
           // useValue 只提供一个「长得像 client 一部分」的对象即可，
-          // 因为被测方法只会用到 membership.findMany 这一个入口。
+          // 因为被测方法只会用到 membership.findMany / $transaction 这两个入口。
           // token 是 Symbol，必须显式 provide: PRISMA，与 service 里的 @Inject(PRISMA) 对齐
           provide: PRISMA,
-          useValue: { membership: { findMany } },
+          useValue: { membership: { findMany }, $transaction: transaction },
         },
       ],
     }).compile();
@@ -137,5 +148,31 @@ describe('TenantsService', () => {
     const result = await service.listByUser('u1');
 
     expect(result.map((r) => r.id)).toEqual(['t2', 't1']);
+  });
+
+  it('创建团队：同一事务内写 tenant 与 owner membership，并返回契约形状', async () => {
+    tenantCreate.mockResolvedValue({ id: 't9', name: '新团队' });
+    membershipCreate.mockResolvedValue({});
+
+    const result = await service.create('u1', '新团队');
+
+    // 两条写入必须共用一个事务：拆开写会留下「有团队没成员」的孤儿租户，
+    // 它不在任何人的列表里，用户既看不到也删不掉
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(tenantCreate).toHaveBeenCalledWith({
+      data: { name: '新团队', ownerId: 'u1' },
+      select: { id: true, name: true },
+    });
+    expect(membershipCreate).toHaveBeenCalledWith({
+      data: { tenantId: 't9', userId: 'u1', role: 'owner', status: 'active' },
+    });
+    // 返回形状必须与 GET /tenants 的列表项一致，前端才能直接追加进缓存
+    expect(result).toEqual({
+      id: 't9',
+      name: '新团队',
+      role: 'owner',
+      status: 'active',
+      lastActiveAt: null,
+    });
   });
 });

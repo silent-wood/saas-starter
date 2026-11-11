@@ -109,3 +109,76 @@ body {
   line-height: 18px;
   color: #8c8c8c;
 }
+
+/**
+ * 侧栏选中态（设计稿 S2 · 红线标注）：
+ * #F0F5FF 底 + 图标左侧竖条（激活色加粗）+ 文字 #1A56DB 600。
+ * ProLayout token 只能给底色与文字色，左条与字重在此用 CSS 补齐。
+ * 竖条用 ::before 伪元素独立绘制（box-shadow inset 会被选中背景与
+ * 圆角裁切吞掉），带色值回退避免变量失效时整条声明被丢弃。
+ */
+.ant-pro-sider .ant-menu-item.ant-menu-item-selected {
+  position: relative;
+  font-weight: 600;
+}
+
+.ant-pro-sider .ant-menu-item.ant-menu-item-selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 20px;
+  border-radius: 0 4px 4px 0;
+  background: var(--color-primary, #1a56db);
+}
+
+/**
+ * AuthLayout：side 布局 + ProLayout children 内自绘顶栏（h-14 = 56px）。
+ * 对齐三要素（缺一即错位）：
+ * 1. 侧栏 logo 区钉成 56px（antd reset 全局 border-box，含 1px 底边分割线），
+ *    与顶栏 h-14（同样含 1px 底边）拼成一条连续横带；
+ * 2. .ant-pro-layout-content 会继承 token.pageContainer 的 paddingBlock/Inline
+ *    ——已在 AuthLayout token 里归零（顶栏贴顶满宽的关键），页面 24px 内边距
+ *    由 AuthLayout 里 Outlet 的 p-6 包裹层承担；
+ * 3. pro-layout 源码强制 logo 区 `> img { height: 22 }`，此处按设计稿恢复 28px。
+ */
+.ant-pro-layout .ant-pro-sider-logo {
+  height: 56px;
+  padding-block: 0;
+}
+
+.ant-pro-layout .ant-pro-sider-logo > a > img {
+  width: 28px;
+  height: 28px;
+}
+
+/**
+ * 顶栏团队名：内容超出可视宽度时，悬停左右往复滚动以读全名。
+ *
+ * 位移量由 UserMenu 测量 scrollWidth - clientWidth 后写入 `--tenant-shift`（负值），
+ * 不在 CSS 里写死宽度 —— 宽度上限跟着 NAME_MAX_WIDTH 走，改一处即可。
+ * alternate 让往复自然，delay 避开 Dropdown 弹出的那一下，避免刚悬停就抖。
+ */
+@keyframes tenant-name-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(var(--tenant-shift, 0px));
+  }
+}
+
+.tenant-name-scroll {
+  display: inline-block;
+  animation: tenant-name-scroll 3s ease-in-out 0.3s infinite alternate;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tenant-name-scroll {
+    animation: none;
+    transform: translateX(var(--tenant-shift, 0px));
+  }
+}

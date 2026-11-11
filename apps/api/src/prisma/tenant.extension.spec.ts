@@ -80,4 +80,46 @@ describe('applyTenantScope 隔离规则', () => {
       data: { status: 'ready' },
     });
   });
+
+  /**
+   * Resource 进白名单后的三条：这三条是「资源域隔离」的回归锁。
+   * 反向验证方式：把 'Resource' 从 TENANT_SCOPE 里删掉，三条必须变红。
+   */
+  it('有上下文 + Resource.create → 往 data 注入 tenantId', async () => {
+    await tenantContext.run({ tenantId: 'tenant-a' }, () =>
+      applyTenantScope({
+        model: 'Resource',
+        args: { data: { name: '需求清单', createdBy: 'u1' } },
+        query: passthrough,
+      }),
+    );
+
+    expect(passthrough).toHaveBeenCalledWith({
+      data: { name: '需求清单', createdBy: 'u1', tenantId: 'tenant-a' },
+    });
+  });
+
+  it('有上下文 + Resource.findMany → 往 where 合并 tenantId', async () => {
+    await tenantContext.run({ tenantId: 'tenant-a' }, () =>
+      applyTenantScope({
+        model: 'Resource',
+        args: { where: { deletedAt: null } },
+        query: passthrough,
+      }),
+    );
+
+    expect(passthrough).toHaveBeenCalledWith({
+      where: { deletedAt: null, tenantId: 'tenant-a' },
+    });
+  });
+
+  it('Resource + 无租户上下文 → 原样透传（清理任务 / 迁移脚本可用）', async () => {
+    await applyTenantScope({
+      model: 'Resource',
+      args: { where: { id: 'r1' } },
+      query: passthrough,
+    });
+
+    expect(passthrough).toHaveBeenCalledWith({ where: { id: 'r1' } });
+  });
 });
