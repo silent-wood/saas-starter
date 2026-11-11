@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { AuthCard } from './AuthCard';
 import { COPY } from '@/constants/copy';
 
@@ -30,6 +30,7 @@ interface AuthShellProps {
  */
 export function AuthShell({ mode, privacy, children }: AuthShellProps) {
   const navigate = useNavigate();
+  const location = useLocation();
 
   return (
     <AuthCard footer={privacy}>
@@ -45,7 +46,12 @@ export function AuthShell({ mode, privacy, children }: AuthShellProps) {
               type="button"
               role="tab"
               aria-selected={active}
-              onClick={() => navigate(tab.path)}
+              /**
+               * 跳转必须带上当前 search：登录页被守卫写入的 `returnTo`（如
+               * `/join?token=xxx`）如果在这里丢掉，用户点「注册」就再也回不到邀请，
+               * 全程白走一趟。方案 01 AC-28 / F-13。
+               */
+              onClick={() => navigate({ pathname: tab.path, search: location.search })}
               className={`relative h-8 flex-1 cursor-pointer border-0 bg-transparent p-0 text-sm leading-[22px] ${
                 active ? 'font-semibold text-primary' : 'text-ink-3'
               }`}

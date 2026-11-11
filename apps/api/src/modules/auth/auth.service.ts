@@ -100,13 +100,32 @@ export class AuthService {
         message: '该邮箱已注册，请直接登录',
       });
     }
+    /**
+     * 受邀注册只在「新建账号」分支尝试。
+     *
+     * 已存在但未验证的账号不走这条路：它可能是在别处正常注册过的（只是没点验证信），
+     * 给它跳过建团队会让这个账号永远没有自己的团队——他手里这张邀请如果失效，
+     * 就成了零团队账号，反而比普通注册更糟。文档 §2.5 的决策表也是这么定的。
+     */
+    const invite = existing ? null : await this.findAcceptableInvite(input.inviteToken, email);
+
     const token = this.tokenService.createOpaqueToken();
     const tokenData = {
       type: 'verify_email' as const,
       tokenHash: this.tokenService.hashToken(token),
       expiresAt: new Date(Date.now() + VERIFY_TOKEN_TTL_MS),
-      // 租户名只在注册请求里出现一次；验证时才建租户，所以必须先挂在令牌上
-      payload: { tenantName: input.tenantName },
+      /**
+       * 两种 payload 形态（方案 01 §4.2）：
+       * - 普通注册 `{ tenantName }`：验证时建团队，名字挂在这里（注册当次不落库）
+       * - 受邀注册 `{ skipTenant, inviteId }`：验证时不建团队，改为加入邀请的团队
+       *
+       * 为什么还留 `skipTenant`：它是意图标记，读 payload 时一眼看出「没有团队名
+       * 不是漏写」。真正的执行依据是 `inviteId`——验证时会拿它**重查**邀请，
+       * 不信任 15 分钟前的结论（期间管理员可能已撤销）。
+       */
+      payload: invite
+        ? { skipTenant: true, inviteId: invite.id }
+        : { tenantName: input.tenantName ?? '' },
     };
 
     let userId: string;
@@ -161,6 +180,19 @@ export class AuthService {
 
   // -----------邮箱验证-------------------
 
+  /**
+   * 消费验证令牌并产出「用户属于哪个团队」。
+   *
+   * 两条路径，终点一致（`email_verified_at` 置位 + 一条 `status=active` 的 membership）：
+   * - **受邀注册**：payload 带 `inviteId`，加入邀请指向的团队，**不建租户**
+   * - **普通注册 / 邀请已失效**：建一个自己的团队并成为 owner
+   *
+   * 邀请为什么在「验证」而不是「注册」时消费：注册阶段邮箱还没验证，而
+   * `users.email` 的唯一键已经占住。邀请链接被转发到群里是常态，谁先拿到谁就能
+   * 用这个邮箱注册；若注册即消费，攻击者占住邮箱、邀请变 accepted，他自己永远
+   * 验证不了邮箱也登录不了，管理员却在成员列表看到「已接受」，真正的受邀人反而
+   * 被挡在 410 外面。点开邮件里的验证链接 = 证明持有该邮箱，此时才是可信身份。
+   */
   async verifyEmail(token: string): Promise<VerifyEmailResult> {
     const invalid = () =>
       new BadRequestException({
@@ -175,7 +207,8 @@ export class AuthService {
 
     if (!record || record.usedAt || record.expiresAt.getTime() <= Date.now()) throw invalid();
 
-    const tenantName = this.readTenantName(record.payload) ?? `${record.user.nickname} 的团队`;
+    const payload = this.readPayload(record.payload);
+
     const tenantId = await this.prisma.$transaction(async (tx) => {
       const consumed = await tx.emailToken.updateMany({
         where: { id: record.id, usedAt: null },
@@ -188,6 +221,67 @@ export class AuthService {
         data: { emailVerifiedAt: record.user.emailVerifiedAt ?? new Date() },
       });
 
+      const now = new Date();
+
+      if (payload.inviteId) {
+        const invite = await tx.invite.findUnique({
+          where: { id: payload.inviteId },
+          select: {
+            id: true,
+            tenantId: true,
+            email: true,
+            role: true,
+            status: true,
+            expiresAt: true,
+            invitedBy: true,
+            tenant: { select: { deletedAt: true } },
+          },
+        });
+
+        /**
+         * 注册时校验过一次，这里**再验一次**：两件事之间可能隔了十几分钟，
+         * 期间管理员可能撤销、团队可能被软删、邀请可能被重发轮换（重发不换 id，
+         * 所以 id 还在但 token 已换——status 仍是 pending，属于可用）。
+         * 邮箱再比一次是因为验证的是「这个邮箱的账号」，成本为零。
+         */
+        const usable =
+          invite !== null &&
+          invite.status === 'pending' &&
+          invite.expiresAt.getTime() > now.getTime() &&
+          invite.tenant.deletedAt === null &&
+          invite.email.toLowerCase() === record.user.email.toLowerCase();
+
+        if (invite && usable) {
+          // upsert 而不是 create：同一人同租户只能有一行（@@unique(tenantId,userId)），
+          // 这里可能是 removed 行（被移出后又通过邀请回来），直接改回 active
+          await tx.membership.upsert({
+            where: {
+              tenantId_userId: { tenantId: invite.tenantId, userId: record.userId },
+            },
+            update: { status: 'active', role: invite.role },
+            create: {
+              tenantId: invite.tenantId,
+              userId: record.userId,
+              role: invite.role,
+              status: 'active',
+              invitedBy: invite.invitedBy,
+              lastActiveAt: now,
+            },
+          });
+          await tx.invite.update({
+            where: { id: invite.id },
+            data: { status: 'accepted', acceptedAt: now, acceptedBy: record.userId },
+          });
+          this.logger.log(`register.joined tenant=${invite.tenantId} user=${record.userId}`);
+          return invite.tenantId;
+        }
+
+        // 邀请在注册之后失效（撤销 / 过期 / 团队被删）：落到下面的兜底团队。
+        // 让用户「点了邀请链接却什么都没有」比多一个可改名的团队更难解释
+        this.logger.warn(`register.invite-gone invite=${payload.inviteId} user=${record.userId}`);
+      }
+
+      const tenantName = payload.tenantName ?? `${record.user.nickname} 的团队`;
       const tenant = await tx.tenant.create({
         data: { name: tenantName, ownerId: record.userId },
       });
@@ -198,7 +292,7 @@ export class AuthService {
           userId: record.userId,
           role: 'owner',
           status: 'active',
-          lastActiveAt: new Date(),
+          lastActiveAt: now,
         },
       });
       return tenant.id;
@@ -449,11 +543,65 @@ export class AuthService {
     };
   }
 
-  /** payload 是 Json 列，读出来是 unknown，必须自行收窄；直接当对象用会在脏数据上崩 */
-  private readTenantName(payload: unknown): string | null {
-    if (typeof payload !== 'object' || payload === null) return null;
-    const value = (payload as { tenantName?: unknown }).tenantName;
-    return typeof value === 'string' && value.trim() ? value : null;
+  /**
+   * payload 是 Json 列，读出来是 unknown，必须自行收窄；直接当对象用会在脏数据上崩。
+   *
+   * 两种形态（方案 01 §4.2）统一解析成两个可空字段，调用方只按 null 分支，
+   * 不需要知道原先是哪一种：
+   * - 普通注册 `{ tenantName }`        → inviteId 为 null
+   * - 受邀注册 `{ skipTenant, inviteId }` → tenantName 为 null
+   */
+  private readPayload(payload: unknown): { tenantName: string | null; inviteId: string | null } {
+    if (typeof payload !== 'object' || payload === null) {
+      return { tenantName: null, inviteId: null };
+    }
+    const source = payload as { tenantName?: unknown; inviteId?: unknown };
+    return {
+      // 空串等同缺失：让兜底团队名（`{nickname} 的团队`）接手，不会建出无名租户
+      tenantName:
+        typeof source.tenantName === 'string' && source.tenantName.trim()
+          ? source.tenantName
+          : null,
+      inviteId: typeof source.inviteId === 'string' && source.inviteId ? source.inviteId : null,
+    };
+  }
+
+  /**
+   * 注册阶段的邀请校验，四项全中才返回邀请：**hash 命中 / 状态 pending / 未过期 / 邮箱一致**。
+   *
+   * 任一不满足都返回 null 而不是抛错——注册不该因为邀请过期而失败。用户没做错任何事，
+   * 报错只会把他卡在注册页；静默降级成普通注册，唯一差别是验证时给他建一个自己的团队。
+   * 这是方案 01 §2.5 决策表里「校验失败静默降级」那一条。
+   *
+   * 注意这里**只读取、不写入**：`invites.status` 要保持 pending，真正的消费在
+   * `verifyEmail` 的事务里（见该方法的注释）。
+   */
+  private async findAcceptableInvite(
+    rawToken: string | undefined,
+    email: string,
+  ): Promise<{ id: string } | null> {
+    if (!rawToken) return null;
+
+    const invite = await this.prisma.invite.findUnique({
+      where: { tokenHash: this.tokenService.hashToken(rawToken) },
+      select: {
+        id: true,
+        email: true,
+        status: true,
+        expiresAt: true,
+        // 团队被软删后邀请不该再生效，否则用户会被拉进一个已进不去的团队
+        tenant: { select: { deletedAt: true } },
+      },
+    });
+
+    if (!invite) return null;
+    if (invite.status !== 'pending') return null;
+    if (invite.expiresAt.getTime() <= Date.now()) return null;
+    // email 入库时已 trim + toLowerCase（MembersService.invite），这里 normalize 后再比
+    if (invite.email.toLowerCase() !== email) return null;
+    if (invite.tenant.deletedAt !== null) return null;
+
+    return { id: invite.id };
   }
   /**
    * Prisma 的 P2002 = 唯一约束冲突。按结构判断而不是 instanceof：

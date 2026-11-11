@@ -9,9 +9,9 @@ vi.mock('@/shared/api/auth', () => ({
   authApi: { register: vi.fn() },
 }));
 
-function renderRegister() {
+function renderRegister(entry = '/register') {
   return render(
-    <MemoryRouter initialEntries={['/register']}>
+    <MemoryRouter initialEntries={[entry]}>
       <AntdApp>
         <Routes>
           <Route path="/register" element={<Register />} />
@@ -77,8 +77,9 @@ describe('Register', () => {
     // antd 会在两个中文字符间自动插入空格（autoInsertSpace），故用正则匹配
     fireEvent.click(screen.getByRole('button', { name: /注\s*册/ }));
 
-    // zodResolver 为异步校验，需 findBy 等待错误渲染
-    expect(await screen.findByText('团队名称至少 2 个字符')).toBeInTheDocument();
+    // zodResolver 为异步校验，需 findBy 等待错误渲染。
+    // 完全没填的文案是「请输入团队名称」，填了但不足 2 字才是「至少 2 个字符」
+    expect(await screen.findByText('请输入团队名称')).toBeInTheDocument();
     expect(authApi.register).not.toHaveBeenCalled();
   });
 
@@ -116,5 +117,48 @@ describe('Register', () => {
     expect(await screen.findByText('该邮箱已注册，请直接登录')).toBeInTheDocument();
     // 失败不能把用户带走
     expect(screen.queryByText('登录页占位')).not.toBeInTheDocument();
+  });
+
+  // ── v1.3 受邀注册 ─────────────────────────────────────────
+  it('受邀注册：隐藏团队名称、显示说明条、提交带 inviteToken', async () => {
+    vi.mocked(authApi.register).mockResolvedValue({
+      userId: 'usr_2',
+      email: 'invitee@example.com',
+    });
+
+    const returnTo = '/join?token=invite-abc';
+    renderRegister(`/register?returnTo=${encodeURIComponent(returnTo)}`);
+
+    // 这一格整块不渲染：受邀注册不建默认团队，填了也只是噪音
+    expect(screen.queryByText(/团队名称/)).not.toBeInTheDocument();
+    expect(screen.getByText(/你正在通过邀请加入团队/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText('请输入姓名'), { target: { value: '张三' } });
+    fireEvent.change(screen.getByPlaceholderText('you@example.com'), {
+      target: { value: 'invitee@example.com' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('请输入密码'), { target: { value: 'Passw0rd' } });
+    fireEvent.change(screen.getByPlaceholderText('请再次输入密码'), {
+      target: { value: 'Passw0rd' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /注\s*册/ }));
+
+    expect(await screen.findByText('登录页占位')).toBeInTheDocument();
+    // 没有 tenantName，多了 inviteToken —— 后端据此跳过建团队
+    expect(authApi.register).toHaveBeenCalledWith({
+      name: '张三',
+      email: 'invitee@example.com',
+      password: 'Passw0rd',
+      inviteToken: 'invite-abc',
+    });
+  });
+
+  it('returnTo 指向站外时按普通注册处理（防开放重定向）', () => {
+    // `//evil.com/join?token=x` 会被浏览器当成协议相对 URL
+    renderRegister('/register?returnTo=%2F%2Fevil.com%2Fjoin%3Ftoken%3Dx');
+
+    expect(screen.getByText(/团队名称/)).toBeInTheDocument();
+    expect(screen.queryByText(/你正在通过邀请加入团队/)).not.toBeInTheDocument();
   });
 });

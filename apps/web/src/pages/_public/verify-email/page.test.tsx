@@ -33,16 +33,17 @@ describe('VerifyEmail', () => {
     expect(authApi.verifyEmail).not.toHaveBeenCalled();
   });
 
-  it('验证通过时展示 R11 成功态：团队已建好的事实要说清楚', async () => {
+  it('验证通过时展示 R11 成功态：不再承诺「团队已创建」', async () => {
     vi.mocked(authApi.verifyEmail).mockResolvedValue({ verified: true, tenantId: 't_1' });
 
     renderPage('/verify-email?token=ok');
 
     expect(await screen.findByText('邮箱已验证')).toBeInTheDocument();
     expect(screen.getByText('账号已激活，从现在起可以登录。')).toBeInTheDocument();
-    expect(screen.getByText('团队空间已创建')).toBeInTheDocument();
-    expect(screen.getByText('你是该团队 Owner')).toBeInTheDocument();
-    expect(screen.getByText('团队名称可在「设置 → 通用」中修改')).toBeInTheDocument();
+    // v1.3：受邀注册验证后是加入别人的团队，压根没有新建租户，
+    // 而接口只返回 tenantId、分不出是哪种，所以这句不能出现
+    expect(screen.queryByText('团队空间已创建')).not.toBeInTheDocument();
+    expect(screen.queryByText('你是该团队 Owner')).not.toBeInTheDocument();
     // 成功不等于已登录：主按钮去登录页，不直接进工作台
     expect(screen.getByRole('button', { name: /去登录/ })).toBeInTheDocument();
     expect(authApi.verifyEmail).toHaveBeenCalledWith({ token: 'ok' });

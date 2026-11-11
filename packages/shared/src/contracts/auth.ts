@@ -29,11 +29,18 @@ export const loginSchema = z.object({
 
 export type LoginInput = z.infer<typeof loginSchema>;
 
+/** 团队名缺失时的统一文案：前端表单与后端 422 共用，避免两处措辞漂移 */
+export const TENANT_NAME_REQUIRED_MESSAGE = '请输入团队名称';
+
 /**
- * 注册入参。
+ * 注册入参的**基础形状**（只含单字段规则，不含跨字段校验）。
  *
- * 不含 `confirmPassword` —— 二次确认是纯前端表单关注点，由 web 侧
- * `registerSchema.extend({ confirmPassword })` 组合而来，不污染接口契约。
+ * 拆成两份的原因：`superRefine()` 返回的是带校验链的类型，**不再有 `.extend()`**，
+ * 而前端要用 `registerBaseSchema.extend({ confirmPassword })` 追加表单字段。
+ * 所以跨字段规则单独放在下面的 `registerSchema` 里，前端复用 `needsTenantName()`
+ * 把同一条规则接上去，两边判定口径仍是一份代码。
+ *
+ * 不含 `confirmPassword` —— 二次确认是纯前端表单关注点，不污染接口契约。
  *
  * 字段落库映射（详见 `_docs/功能技术方案/01-注册与登录.md` §4.2）：
  * - `tenantName`  → `tenants.name`（验证通过后建租户时写入，注册当次不落库）
@@ -41,12 +48,15 @@ export type LoginInput = z.infer<typeof loginSchema>;
  * - `email`       → `users.email`（唯一索引）
  * - `password`    → `users.password_hash`（bcrypt）
  */
-export const registerSchema = z.object({
+export const registerBaseSchema = z.object({
   /**
    * 团队名称，验证通过后成为租户名 `tenants.name`（字段上限 100，这里限 50 留余量）。
    * 命名不用 `companyName`：本产品是通用型多租户脚手架，租户 = 团队/组织，不限于企业。
+   *
+   * **可选**：受邀注册（`inviteToken` 在场）不建默认团队，这一格根本不显示。
+   * 有无它、是否为空，由 `registerSchema` 的跨字段规则判定。
    */
-  tenantName: z.string().min(2, '团队名称至少 2 个字符').max(50, '团队名称不超过 50 个字符'),
+  tenantName: z.string().max(50, '团队名称不超过 50 个字符').optional(),
   /** 用户显示名，写入 `users.nickname`（字段上限 50，这里限 20 便于列表与头像旁展示） */
   name: z.string().min(2, '姓名至少 2 个字符').max(20, '姓名不超过 20 个字符'),
   /** 注册邮箱，全局唯一。已注册且已验证时返回 `EMAIL_TAKEN`；未验证则覆盖密码并重发验证信 */
@@ -61,6 +71,42 @@ export const registerSchema = z.object({
     .max(64, '密码不超过 64 位')
     // 前后端同一条强度规则，避免前端放行、后端拒绝
     .regex(/^(?=.*[A-Za-z])(?=.*\d)/, '密码需同时包含字母和数字'),
+  /**
+   * 邀请令牌（来自 `/join?token=xxx`），**只有受邀注册才传**。
+   *
+   * 为什么是 token 而不是 `tenantId` / `tenantName`：注册接口是 `@Public`，
+   * 前端传的 `tenantId` 一律不可信——传别人的 id 就等于「注册即入团」，绕过邀请的
+   * 全部校验；`tenantName` 是展示信息，拿它当「建不建团队」的开关属于用缺省值承载
+   * 语义，任何漏传的调用方都会静默得到零团队账号。只有 token 服务端验得了：
+   * sha256 命中 + `pending` + 未过期 + 邮箱一致（见 `AuthService.register`）。
+   *
+   * **校验失败不报错**：邀请过期/被撤销时静默降级为普通注册，用户没做错任何事，
+   * 不该被卡在注册页。
+   */
+  inviteToken: z.string().optional(),
+});
+
+/** 是否需要用户手填团队名：受邀注册（`inviteToken` 在场）时不需要 */
+export function needsTenantName(values: { tenantName?: string; inviteToken?: string }): boolean {
+  return !values.inviteToken && !(values.tenantName ?? '').trim();
+}
+
+/**
+ * 注册入参（含跨字段规则），接口契约用这一份。
+ *
+ * 规则只有一条，但分两档文案：完全没填说「请输入团队名称」，填了但不足 2 字说
+ * 「至少 2 个字符」——两者给用户的下一步动作不同。
+ * 受邀注册（有 `inviteToken`）跳过这条，团队在验证邮箱时通过邀请加入，
+ * 不建默认团队（方案 01 §2.5）。
+ */
+export const registerSchema = registerBaseSchema.superRefine((values, ctx) => {
+  if (needsTenantName(values)) {
+    ctx.addIssue({ code: 'custom', path: ['tenantName'], message: TENANT_NAME_REQUIRED_MESSAGE });
+    return;
+  }
+  if (!values.inviteToken && (values.tenantName ?? '').trim().length < 2) {
+    ctx.addIssue({ code: 'custom', path: ['tenantName'], message: '团队名称至少 2 个字符' });
+  }
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;

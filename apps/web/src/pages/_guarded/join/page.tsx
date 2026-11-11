@@ -102,10 +102,18 @@ export const JoinPage = () => {
 
   const invite = preview.data;
 
+  /**
+   * 已接受：**不能断言「你已在该团队中」**。
+   *
+   * `remove()` 只改 `membership.status`，不动 invite，所以被移出的人点旧链接时
+   * `status` 仍是 `accepted`，会走到这里。原先写「你已在该团队中，可以直接切换过去」
+   * 在那个场景下是假话——他一个团队都没有。改成只陈述事实（这条邀请用过了），
+   * 「返回工作台」两种情况都去对了地方：还在团队就正常进，不在就落到引导页。
+   */
   if (invite.accepted) {
     return renderNotice(
-      '你已在该团队中',
-      `「${invite.tenantName}」已经在你的团队列表里，可以直接切换过去。`,
+      '这条邀请已被使用',
+      `「${invite.tenantName}」的邀请已经用过。仍在团队中可直接返回工作台；若已不在该团队，请联系管理员重新发送邀请。`,
     );
   }
   if (invite.expired) {

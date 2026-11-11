@@ -13,4 +13,9 @@ export const REGISTER_COPY = {
   passwordHint: '至少 8 位，需同时包含字母和数字',
   /** 提交失败的兜底文案（后端没给可读 message 时） */
   submitFailed: '注册失败，请稍后重试',
+  /**
+   * 受邀注册的说明条（v1.3）。只说「会发生什么」，不承诺团队名——
+   * 注册页拿不到（`GET /invites/:token` 需要登录）。
+   */
+  inviteHint: '你正在通过邀请加入团队，验证邮箱后自动加入，无需创建团队',
 } as const;

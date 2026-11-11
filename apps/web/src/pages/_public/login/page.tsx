@@ -22,6 +22,7 @@ import { COPY } from '@/constants/copy';
 import { authApi } from '@/shared/api/auth';
 import { useAuthStore } from '@/stores/auth';
 import type { ApiError } from '@/shared/api/client';
+import { safeReturnTo } from '@/utils/returnTo';
 import { LOGIN_COPY, REMEMBERED_EMAIL_KEY } from './constants';
 
 /** 注册页跳过来时带的 state（只读，不参与接口契约） */
@@ -63,9 +64,9 @@ export default function Login() {
 
       useAuthStore.getState().setSession(accessToken, user);
       // 被守卫拦下来的深链：登录后回到原目标，而不是一律回工作台。
-      // 只接受站内绝对路径——`//evil.com` 会被浏览器当成协议相对 URL 跳出去。
-      const returnTo = new URLSearchParams(location.search).get('returnTo');
-      const target = returnTo?.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/app';
+      // 校验放在 utils/returnTo（只接受站内绝对路径，`//evil.com` 会被当成协议
+      // 相对 URL 跳出去），与注册页 Tab 透传共用同一份实现
+      const target = safeReturnTo(new URLSearchParams(location.search).get('returnTo'));
       navigate(target, { replace: true });
     } catch (error) {
       const err = error as ApiError;

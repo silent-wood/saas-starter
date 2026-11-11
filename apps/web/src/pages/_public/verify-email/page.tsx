@@ -55,7 +55,7 @@ export default function VerifyEmail() {
   // ── R11 验证成功 ────────────────────────────────────────────
   if (state === 'success') {
     return (
-      <AuthCard brand={false} footer={VERIFY_COPY.successCardNote}>
+      <AuthCard brand={false}>
         <StateIcon icon={<CheckOutlined />} tone="success" />
 
         <div className="mt-4 text-center text-base leading-6 font-semibold text-ink">
@@ -65,22 +65,12 @@ export default function VerifyEmail() {
           {VERIFY_COPY.successDesc}
         </div>
 
-        {/* 团队卡片：验证通过时同一事务里建好了 tenant + membership(owner)，要让用户知道这件事发生了 */}
-        <div className="mt-6 flex items-center gap-3 rounded-md border border-split px-3 py-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-primary-bg text-xs font-medium text-primary">
-            团
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm leading-[22px] font-medium text-ink">
-              {VERIFY_COPY.successCardTitle}
-            </div>
-            <div className="text-xs leading-[18px] text-ink-3">{VERIFY_COPY.successCardDesc}</div>
-          </div>
-          <span className="shrink-0 rounded bg-primary-bg px-2 py-0.5 text-xs text-primary">
-            Owner
-          </span>
-        </div>
-
+        {/*
+          这里**不再展示「团队已创建」卡片**（v1.3）：受邀注册验证后是加入别人的团队、
+          根本没有新建租户，而接口只返回 `{ verified, tenantId }`，前端分不出是哪种。
+          两种情况都成立的说法只有「邮箱已验证，请登录」，所以只留这一句。
+          团队信息等登录后在顶栏和头像下拉里看。
+        */}
         <Button type="primary" block className="mt-6" onClick={() => navigate('/login')}>
           {VERIFY_COPY.successAction}
         </Button>
