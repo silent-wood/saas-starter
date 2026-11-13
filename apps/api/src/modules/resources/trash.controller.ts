@@ -47,7 +47,7 @@ export class TrashController {
   // 不写的话 Nest 对 POST 默认返回 201，与 07 方案 §3.2 不一致
   @Post(':id/restore')
   @HttpCode(HttpStatus.OK)
-  @Audit(AUDIT_ACTIONS.RESOURCE_RESTORE)
+  @Audit(AUDIT_ACTIONS.RESOURCE_RESTORE, { objectType: 'resource', objectIdParam: 'id' })
   restore(@Param('id') id: string): Promise<ResourceItem> {
     // 失败分支：不存在 / 跨租户 / 已超 30 天窗口，统一 404 RESOURCE_NOT_FOUND。
     // 超窗的行其实还在表里（等清理任务），但对用户来说已经等于没了，
@@ -57,7 +57,7 @@ export class TrashController {
 
   /** DELETE /api/v1/trash/:id —— 物理删除，不可恢复，故必须留审计 */
   @Delete(':id')
-  @Audit(AUDIT_ACTIONS.RESOURCE_PURGE)
+  @Audit(AUDIT_ACTIONS.RESOURCE_PURGE, { objectType: 'resource', objectIdParam: 'id' })
   purge(@Param('id') id: string): Promise<{ id: string }> {
     // 只删回收站内的行：service 会用 deletedAt > cutoff 收窄，
     // 传一条正常资源的 id 进来同样是 404，绕不过软删除保护

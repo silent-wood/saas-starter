@@ -13,8 +13,14 @@
 import type { ComponentType } from 'react';
 import type { Permission } from '@saas/shared';
 
-/** 菜单图标用字符串键，避免 meta.ts 反向依赖组件库、也保证 meta 是可序列化纯数据 */
-export type IconName = 'appstore' | 'database' | 'delete' | 'team' | 'robot' | 'pay' | 'setting';
+/**
+ * 菜单图标用字符串键，避免 meta.ts 反向依赖组件库、也保证 meta 是可序列化纯数据。
+ *
+ * ⚠️ 这个联合类型与 icons.tsx 的 `ICONS: Record<IconName, ReactNode>` 是一对：
+ * 只加这里不加那边，tsc 会立刻报 ICONS 缺键。这是刻意的，别用 `as` 绕过。
+ */
+export type IconName =
+  'appstore' | 'database' | 'delete' | 'team' | 'robot' | 'pay' | 'audit' | 'setting';
 
 /** 页面元信息：与 page.tsx 同目录的 meta.ts 默认导出 */
 export interface RouteMeta {

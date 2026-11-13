@@ -1,14 +1,18 @@
 # 06 RBAC 与审计
 
-> 版本 v1.1 ｜ 更新 2026-11-05 ｜ 状态：已实现
-> 确认：李顺 · 2026-11-05
-> 关联：《技术方案设计》§4.6 权限渲染、§5.5 RBAC 设计、《需求文档》§审计日志、《数据库设计与数据字典》§3 audit_logs、`03-多租户行级隔离`、`_docs/安全规范.md`
+> 版本 v1.3 ｜ 更新 2026-11-13 ｜ 状态：v1.1 机制层已实现 · v1.2 / v1.3 审计页已实现
+> 确认：李顺 · 2026-11-05（v1.1）· 2026-11-11（v1.2）· 2026-11-13（v1.3）
+> 关联：《技术方案设计》§4.6 权限渲染、§5.5 RBAC 设计、《需求文档》§审计日志、《数据库设计与数据字典》§3 audit_logs、`03-多租户行级隔离`、`05-成员与邀请`、`07-资源CRUD与回收站`、`_docs/安全规范.md`
 >
 > **一页速览**
-> 接口：本期**无新增对外接口**（机制层，成员管理与审计查询接口留待 05 / 审计页）
-> 前端落点：`packages/shared` 的权限矩阵常量供 `usePermission()` 复用（本期后端先行，前端落点下一功能点）
+> 接口：v1.1 无新增接口（机制层）；**v1.2 新增 `GET /audit-logs`**（§7）
+> 前端落点：`packages/shared` 的权限矩阵常量供 `usePermission()` 复用；**v1.2 新增 `pages/app/audit-log/`、`shared/api/audit.ts`**
 > 后端落点：`src/common/{guards/roles.guard.ts,decorators/{roles,audit,skip-tenant}.decorator.ts,interceptors/audit.interceptor.ts}`、`src/modules/audit/`、`prisma/schema.prisma`
 > 关键异常：`ROLE_DENIED` / `TENANT_MISMATCH`
+>
+> **v1.2 变更**：把 v1.1 留下的尾巴补完——`GET /audit-logs` 查询接口 + 审计日志页；同时修掉一处**数据缺陷**：`object_type` / `object_id` 两列自建表起从未写入（13 处 `@Audit` 全部只记动作不记对象），审计记录看不出「对谁做的」。§7 一并改造装饰器与拦截器，让对象信息自动落库（**无需迁移**，列已存在）。
+
+> **v1.3 变更**：实现期补两处偏差。①契约增加 `actorRole`，取值来自**写入时快照**而非查询时回查 `memberships`（§7.4.6）——读侧 join 拿到的是「现在」的角色，会把历史改写成假的，且漏掉已 `removed` 的成员。②`list` 的 `count` / `findMany` 由 `$transaction([...])` 改为 `Promise.all`（§7.4.4 末）。
 
 ---
 
@@ -46,8 +50,8 @@
 
 - **成员管理接口**（邀请 / 改角色 / 禁用 / 启用 / 移除 / owner 转让）→ `05-成员与邀请`。本期只建判定机制，"admin 不能改 owner"这类**业务边界规则属于成员管理，不在 `@Roles` 里表达**
 - **登录审计**（`auth.login`）：登录是 `@Public` 接口，执行时 `req.user` 还不存在，且失败登录无法确定 actor（数据库 `actor_user_id` 为 NOT NULL），需与成员管理一并设计 → `05-成员与邀请`
-- **审计查询接口** `GET /audit-logs`（筛选/分页）→ 审计日志页
-- **180 天清理任务** → M3 引入 BullMQ 后落地
+- **审计查询接口** `GET /audit-logs`（筛选/分页）→ **v1.2 已收回本篇，见 §7**
+- **180 天清理任务** → M3 引入 BullMQ 后落地（v1.2 仍不做，见 §7.1.3）
 - **前端按钮级渲染**（`usePermission` / `<AuthButton>`）：本期常量就绪，前端接入随成员管理页
 - **IP 归属地、User-Agent 解析**：`audit_logs` 表结构不含这两列（按数据库设计文档），不擅自扩展
 
@@ -456,3 +460,438 @@ SELECT indexname FROM pg_indexes WHERE tablename = 'audit_logs';
 | §4.3 守卫执行顺序 | 一致（Throttler → JwtAuth → Tenant） | 追加 `RolesGuard` 到末位 |
 
 > 03 文档 §5.3 的手工清单里其实已经列了"登录后 `GET /tenants` 正常返回"，但当时只跑了单测、没跑这一步，所以偏差没被发现。本篇的 §5.3 把这条挪成必跑项。
+
+---
+
+## 7. 审计日志查询（v1.2）
+
+> 本篇 v1.1 只建了「写」的一半：`audit_logs` 有数据的入口，没有读的出口。§7 补上 `GET /audit-logs` 与审计日志页，M2 由此闭合（《需求文档》§10.2「审计日志：记录敏感操作，仅 owner / admin 可查看与筛选」）。
+>
+> **为什么把查询页并进本篇而不另开 `08`**：它与 v1.1 共用同一张表、同一套 `AUDIT_ACTIONS` 词表、同一套守卫链。拆成两篇，动作词表的解释必然出现两份，改一处漏一处。代价是本文超过 400 行——这是有意接受的，不是疏漏。
+
+### 7.1 需求
+
+#### 7.1.1 用户故事
+
+| 编号 | 角色 | 诉求 | 目的 |
+|------|------|------|------|
+| US-05 | 租户 owner | 打开「审计日志」能按时间 / 动作 / 操作者 / 结果筛选，看清「谁在什么时候对谁做了什么」 | 出问题时能定位到具体操作与操作人 |
+| US-06 | 租户 admin | 想知道某个成员最近都干了什么（改过哪些资源、动过哪些人） | 内部排查与交接 |
+| US-07 | 安全负责人 | 看到失败的操作（403 / 404 / 500），判断是否存在越权尝试 | 合规检查与异常发现 |
+
+#### 7.1.2 验收标准
+
+| 编号 | 标准 |
+|------|------|
+| AC-15 | owner / admin 打开 `/app/audit-log` 看到审计列表；member 侧栏**无该菜单项**，直连 URL 原地渲染 403（`audit.view` 权限，走 `meta.permission` 而非接口报错兜底） |
+| AC-16 | 列表**只返回当前 `X-Tenant-Id` 对应租户**的记录：同一用户同时是 A、B 两租户的 admin，用 A 的 header 查不到 B 的任何一条 |
+| AC-17 | `tenantId IS NULL` 的账号级事件（如 `auth.login`）**不出现**在租户审计页：查询条件恒带 `tenantId = 当前租户`，NULL 永不等于任何值 |
+| AC-18 | 未传 `from` 时默认取近 30 天；排序为 `createdAt DESC, id DESC`（同秒多条时用 id 做 tie-break，避免翻页出现重复行或漏行）；`total` 是**过滤后**的总数而非当页条数 |
+| AC-19 | 分页参数 `page` / `pageSize`，`pageSize` 上限 100；`pageSize=101` 或 `page=0` → `422 VALIDATION_FAILED`；页码越界返回空数组 + 真实 `total`，不报错 |
+| AC-20 | `action` 过滤只接受 `AUDIT_ACTIONS` 的取值（17 个），非法值 → `422 VALIDATION_FAILED`；不传则不过滤 |
+| AC-21 | `result` 过滤接受 `success` / `failed`，非法值 → 422 |
+| AC-22 | `actorUserId` 精确过滤；`from` / `to` 为 ISO datetime，**闭区间**（`gte` / `lte`）；`from > to` 返回空结果而不是报错（空区间是合法查询） |
+| AC-23 | 每条记录带 `actorName`（`users.nickname`）：**一次 `IN` 查询批量取**，不是每行一次；`users` 行缺失（注销/脏数据）时为 `null`，前端显示「已注销用户」 |
+| AC-24 | 新写入的审计必须带 `objectType` + `objectId`：13 处 `@Audit` 全部声明 `objectType`；`objectId` 成功时取响应体 `id` / `inviteId`，取不到时与失败分支一样退回 `req.params[objectIdParam]` |
+| AC-25 | 成功时 `detail.objectName` 按 `name` → `nickname` → `email` 取第一个命中的（邀请记录因此显示被邀请邮箱，比 id 可读）；三者都不存在（`transfer-owner`、`purge`）或失败时为 `null`，不影响 `objectId` 落库 |
+| AC-26 | **令牌永不进审计**：`GET /invites/:token` 不标 `@Audit`；邀请的三个写接口只声明 `objectIdParam: 'id'`（`invites.id`），路径里的 `:token` 不会被写成 `objectId` |
+| AC-27 | 页面「对象」列降级顺序：`objectName` → `{对象类型中文} · {id 前 8 位}` → 「—」 |
+| AC-28 | 详情抽屉展示：动作（中文）、操作者（昵称 + 邮箱）、时间、IP、请求路径、HTTP 状态码（仅失败）、耗时、对象、结果；内容全部来自列表项已返回的字段，**不为此单开详情接口**，也不额外请求 |
+| AC-29 | 审计记录只读：后端只有 `GET`，前端无删除 / 编辑 / 批量操作入口 |
+| AC-30 | 列表为空时给空态文案「当前筛选条件下没有审计记录」+ 「重置筛选」，而不是空白表格 |
+
+#### 7.1.3 范围外
+
+- **导出 CSV**：要处理大结果集、导出动作自身的审计、脱敏复核。有合规需求时单开一篇。
+- **180 天清理任务**：M3 引入 BullMQ 后与通知、软删清理同批做。本期只保 AC-18 的默认时间窗，防止无意识全表扫。
+- **关键词全文搜索**：`detail` 是 JSONB，模糊匹配要建 GIN 索引并处理中文分词，本期不值。筛选维度已覆盖「谁 / 何时 / 干了什么 / 成败」。
+- **跨租户视图**：平台运营视角不在本期产品范围。
+- **登录明细**（`auth.login`）：账号级事件 `tenantId=null`，租户 owner 无权看别人的登录记录（AC-17）。将来做「账号安全」页时按 `actorUserId = 自己` 单独查。
+- **实时刷新**：进页拉一次 + 手动刷新 + 筛选变化重查。审计不是需要秒级感知的数据。
+- **对象名的历史快照**：`detail.objectName` 是写入时的值。资源改名后，历史记录仍显示旧名——这是**有意为之**（审计要记录当时的事实），但与当前名称不一致时以资源详情页为准。
+
+### 7.2 交互逻辑
+
+#### 7.2.1 打开审计页
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as 浏览器 /app/audit-log
+    participant PT as ProTable.request
+    participant G as TenantGuard + RolesGuard
+    participant C as AuditLogsController
+    participant S as AuditService
+    participant DB as PostgreSQL
+
+    U->>PT: 进入页面（默认时间范围 = 近 30 天，page=1，pageSize=20）
+    PT->>G: GET /api/v1/audit-logs?page=1&pageSize=20&from=…&to=…
+    G->>G: JwtAuth → membership(active) → req.userRole
+    alt 角色不是 owner / admin
+        G-->>PT: 403 ROLE_DENIED
+        Note over U: 页面本身已被 meta.permission 拦成 403，正常路径到不了这里
+    else 放行
+        G->>C: next
+        C->>S: list(query, tenantId)
+        alt tenantContext 里没有 tenantId
+            S-->>C: 403 TENANT_MISMATCH
+        else
+            S->>DB: $transaction([findMany, count])<br/>WHERE tenant_id=$1 AND created_at BETWEEN … AND …
+            DB-->>S: rows, total
+            S->>DB: users.findMany({ id: { in: actorIds } }) — 一次 IN
+            DB-->>S: nickname / email / status
+            S->>S: 映射：detail 摊平成 path / statusCode / durationMs
+            S-->>C: { items, total, page, pageSize }
+            C-->>PT: 200
+            PT-->>U: 渲染表格（动作中文 / 操作者昵称 / 结果 Tag）
+        end
+    end
+```
+
+#### 7.2.2 异常分支表
+
+| # | 触发条件 | HTTP | 错误码 | 前端表现 |
+|---|---------|------|--------|---------|
+| 1 | 未登录 / access 过期且刷新失败 | 401 | `UNAUTHORIZED` / `TOKEN_EXPIRED` | 跳登录页（带 `returnTo`） |
+| 2 | 缺 `X-Tenant-Id` | 403 | `TENANT_MISMATCH` | 回租户选择页 |
+| 3 | member 角色访问 | 403 | `ROLE_DENIED` | 页面级 403；侧栏本就无入口 |
+| 4 | `pageSize > 100`、`page < 1`、`action` 非法、时间非 ISO | 422 | `VALIDATION_FAILED` | toast「筛选条件不合法，请调整后重试」 |
+| 5 | `from > to` | 200 | — | 空列表 + 空态文案（空区间是合法查询） |
+| 6 | 该租户尚无审计记录 | 200 | — | 空态：当前筛选条件下没有审计记录 |
+
+> 分支 3 是**双保险**：`meta.permission` 让正常入口到不了接口；但接口自身的 `@Roles` 不能省——前端守卫只挡 UI，直接构造请求仍要落到后端判定。
+
+### 7.3 前端改动
+
+#### 7.3.1 现状
+
+`apps/web` 已有 `ProTable` 的成熟用法（`pages/app/resources/page.tsx`）、`usePermission()`、`meta.ts` 的 `permission` 字段（`pages/app/trash` 已在用）。**没有**任何审计相关代码：无 `shared/api/audit.ts`，无 `/app/audit-log` 路由，顶栏搜索也不覆盖审计。`IconName` 联合类型无审计图标。
+
+#### 7.3.2 待改动
+
+| # | 文件 | 动作 | 说明 |
+|---|------|------|------|
+| F-17 | `packages/shared/src/contracts/audit.ts` | 新增 | `auditLogQuerySchema` / `auditLogItemSchema` / `auditLogListResultSchema` + 三个 type |
+| F-18 | `packages/shared/src/audit-actions.ts` | 改造 | 追加 `AUDIT_ACTION_LABELS`（17 条）、`AUDIT_DOMAIN_LABELS`、`AUDIT_OBJECT_TYPE_LABELS`、`auditActionLabel()` |
+| F-19 | `shared/api/audit.ts` | 新增 | `auditApi.list(query)`，与 `resourceApi.list` 同风格（`client.get` + 泛型） |
+| F-20 | `pages/app/audit-log/page.tsx` | 新增 | ProTable + 详情 Drawer；时间范围列用 `valueType: 'dateRange'` + `initialValue`（近 30 天），`search.transform` 转 `from` / `to` |
+| F-21 | `pages/app/audit-log/{meta,constants}.ts` | 新增 | `meta`：`{ title: '审计日志', icon: 'audit', order: 60, permission: 'audit.view' }`；`constants`：列标题、空态、抽屉标签、结果 Tag 颜色 |
+| F-22 | `app/routes/{types,icons}.tsx` | 改造 | `IconName` 加 `'audit'`；`ICONS` 加 `<AuditOutlined />` |
+| F-23 | `pages/app/audit-log/page.test.tsx` | 新增 | 渲染 / 筛选参数 / 失败标记 / 空态 / 对象列降级 |
+
+**列定义**
+
+| 列 | 来源 | 表格 | 搜索 | 说明 |
+|---|---|---|---|---|
+| 时间 | `createdAt` | `YYYY-MM-DD HH:mm:ss` | — | 默认排序，不可点表头改排序 |
+| 时间范围 | — | 隐藏 | `dateRange` | 唯一的时间筛选入口，默认 `[今天-30天, 今天]`，`transform` 成 `from`/`to`（`startOf('day')` / `endOf('day')` 后 `toISOString()`） |
+| 操作者 | `actorUserId` | 昵称 + 角色 Tag，`null` → 「已注销用户」 | `select` | 选项来自 `GET /members` 的 `nickname`，值发 `userId`。**角色 Tag 不来自这里**，读接口自带的 `actorRole`（写入时快照，见 §7.4.6） |
+| 动作 | `action` | `auditActionLabel()` | `select` | 17 项扁平下拉，label 带域前缀（「成员 · 移除成员」），`valueEnum` 由 `AUDIT_ACTION_LABELS` 生成 |
+| 对象 | `objectName` | 见 AC-27 降级 | 隐藏 | `objectType='resource'` 且有 `objectId` 时渲染为链接到 `/app/resources/:id` |
+| 结果 | `result` | Tag：成功（绿）/ 失败（红） | `select` | `failed` 时 Tag 上挂状态码 tooltip |
+| 操作 | — | 「详情」 | — | 打开 Drawer |
+
+> 时间范围用 `dateRange` 而不是两个独立输入框：两个输入框允许 `from > to`，用户会在那儿反复试；`dateRange` 组件本身保证顺序，`transform` 里不用再判。
+
+#### 7.3.3 错误码 → 文案
+
+| 错误码 | 文案 | 展示位置 |
+|--------|------|---------|
+| `ROLE_DENIED` | 当前角色无权查看审计日志 | 页面级 403（`RequirePermission` 渲染） |
+| `VALIDATION_FAILED` | 筛选条件不合法，请调整后重试 | toast |
+| `TENANT_MISMATCH` | 无权访问该租户 | 页面级 403 |
+
+### 7.4 后端接口
+
+#### 7.4.1 接口清单
+
+统一前缀 `/api/v1`，v1.2 新增 1 个接口。
+
+| # | 方法 | 路径 | 鉴权 | 入参 | 出参 |
+|---|------|------|------|------|------|
+| 1 | GET | `/audit-logs` | 登录 + **租户内** + `@Roles('owner','admin')` | query：`page` / `pageSize` / `actorUserId?` / `action?` / `result?` / `from?` / `to?` | `{ items, total, page, pageSize }` |
+
+**不加 `@SkipTenant()`**：审计按租户隔离，必须走 `TenantGuard` 拿 `tenantId`。这与 05 的邀请接受侧正好相反——那里调用时用户还没租户上下文，这里从头到尾都在租户内。
+
+#### 7.4.2 契约（`contracts/audit.ts`）
+
+```ts
+import * as z from 'zod';
+import { AUDIT_ACTIONS } from '../audit-actions.js';
+import { ROLE } from '../roles.js';
+
+/**
+ * 审计列表查询。`from` / `to` 用 `z.iso.datetime({ offset: true })`：
+ * 同时接受 `…Z` 与 `…+08:00` 两种写法（前端 `toISOString()` 产的是前者）。
+ * 注意空串会校验失败——前端不选时间时不要传 `from=''`，要么不传，要么传合法 ISO。
+ */
+export const auditLogQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  /** 精确匹配 audit_logs.actor_user_id */
+  actorUserId: z.string().optional(),
+  /** 只接受 AUDIT_ACTIONS 的取值，非法值 422（避免前端拼错动作名静默返回全量） */
+  action: z.enum(Object.values(AUDIT_ACTIONS), { error: '动作取值不合法' }).optional(),
+  result: z.enum(['success', 'failed'], { error: '结果取值不合法' }).optional(),
+  from: z.iso.datetime({ offset: true }).optional(),
+  to: z.iso.datetime({ offset: true }).optional(),
+});
+
+export const auditLogItemSchema = z.object({
+  id: z.string(),
+  action: z.string(),
+  /** 'member' / 'resource' / 'invite'；历史数据为 null */
+  objectType: z.string().nullable(),
+  objectId: z.string().nullable(),
+  /** 写入时快照的对象名，历史数据为 null */
+  objectName: z.string().nullable(),
+  actorUserId: z.string(),
+  /** users.nickname；用户已注销时为 null */
+  actorName: z.string().nullable(),
+  actorEmail: z.string().nullable(),
+  /** 写入时快照的角色（detail.actorRole）；历史数据与无租户上下文的接口为 null */
+  actorRole: z.enum([ROLE.owner, ROLE.admin, ROLE.member]).nullable(),
+  result: z.enum(['success', 'failed']),
+  ip: z.string().nullable(),
+  /** detail 摊平：只这三列是列表 / 抽屉要用的键 */
+  path: z.string().nullable(),
+  statusCode: z.number().nullable(),
+  durationMs: z.number().nullable(),
+  createdAt: z.string(),
+});
+
+export const auditLogListResultSchema = z.object({
+  items: z.array(auditLogItemSchema),
+  total: z.number(),
+  page: z.number(),
+  pageSize: z.number(),
+});
+```
+
+**为什么摊平 `detail` 而不返回原始 JSON**：`detail` 当前只有 `method` / `path` / `durationMs` / `statusCode` 四个键，摊平后信息完整且类型安全；返回原文会让前端写 `detail.path as string` 这类收窄。将来 `detail` 加键时同步加契约字段——一次改动、编译期能发现漏改。
+
+#### 7.4.3 对象信息的写入改造（本次唯一的既有代码改动）
+
+**问题**：`object_type` / `object_id` 两列从建表起**从未写过**（全仓 grep 零命中），13 处 `@Audit` 只声明了动作。所以现有记录只能回答「谁在何时干了什么动作」，回答不了「对谁干的」——审计页的「对象」列会整列为空。
+
+**改法**：给装饰器加第二参数，拦截器在成功分支从响应体提取。
+
+```ts
+// decorators/audit.decorator.ts
+export interface AuditMeta {
+  action: AuditAction;
+  /** 对象类型，取值与 action 的域同源（member / resource / invite） */
+  objectType?: AuditObjectType;
+  /**
+   * 失败分支从 req.params 取 objectId 的键名。
+   * **必须显式声明**，不声明就不取——`invites/:token` 这类路径参数是明文令牌，
+   * 一旦默认「有 id 就记」，令牌会随审计留存 180 天（AC-26）。
+   */
+  objectIdParam?: string;
+}
+
+export const Audit = (action: AuditAction, meta: Omit<AuditMeta, 'action'> = {}) =>
+  SetMetadata(AUDIT_KEY, { action, ...meta } satisfies AuditMeta);
+```
+
+> **`AUDIT_KEY` 的值从字符串变成对象**，`audit.interceptor.ts` 与 `audit.interceptor.spec.ts` 要同步改（spec 里若有 `Reflect.defineMetadata(AUDIT_KEY, 'xxx')` 会从「静默不审计」变成「读不到 action」）。这是 v1.2 唯一的破坏性改动，改完先跑 interceptor 的 spec。
+
+**拦截器提取规则**
+
+| 分支 | `objectId` | `objectName` |
+|---|---|---|
+| 成功 | 响应体 `id` ?? `inviteId` ?? `req.params[objectIdParam]` ?? `null` | 响应体 `name` ?? `nickname` ?? `email` ?? `null` |
+| 失败 | `req.params[objectIdParam]` ?? `null` | `null`（没有响应体） |
+
+成功分支也要 params 兜底，因为有两个接口的响应体里没有 `id`：`POST /members/:id/transfer-owner` 返回 `{ tenantId, ownerId }`、`DELETE /trash/:id` 返回 `{ id }`（无名字）。补齐后转移所有权仍能记到 `objectId`；`objectName` 只能为 null，页面按 AC-27 降级成「成员 · id 前 8 位」。
+
+提取只在内存里做，写库仍然 fire-and-forget，**不改变「审计不阻塞主请求」的既有契约**（§4.3）。
+
+> **实现前先验证一件事**：`tap({ next })` 里的 `value` 必须是 controller 的最终返回值。Nest 内部会把 Promise 解开，正常情况下拿到的就是对象。**若实测拿到的是未解包的 Promise**，改用 `mergeMap`：在回调里 `await` 一次取对象、同步提取、`void audit.record()` 后 `return of(value)`——提取不等数据库，契约不变。不要在没验证的情况下直接改成 `mergeMap`（它会引入一次微任务延迟，虽无害但没必要）。
+
+**13 处标注清单**
+
+| 接口 | action | objectType | objectIdParam |
+|---|---|---|---|
+| `PATCH /members/:id` | `member.role_change` | `member` | `id` |
+| `POST /members/:id/disable` | `member.disable` | `member` | `id` |
+| `POST /members/:id/enable` | `member.enable` | `member` | `id` |
+| `DELETE /members/:id` | `member.remove` | `member` | `id` |
+| `POST /members/:id/transfer-owner` | `member.transfer_owner` | `member` | `id` |
+| `POST /invites` | `member.invite` | `invite` | —（成功取响应体 `id`） |
+| `DELETE /invites/:id` | `member.invite` | `invite` | `id` |
+| `POST /invites/:id/resend` | `member.invite` | `invite` | `id` |
+| `POST /resources` | `resource.create` | `resource` | — |
+| `PATCH /resources/:id` | `resource.update` | `resource` | `id` |
+| `DELETE /resources/:id` | `resource.delete` | `resource` | `id` |
+| `POST /trash/:id/restore` | `resource.restore` | `resource` | `id` |
+| `DELETE /trash/:id` | `resource.purge` | `resource` | `id` |
+
+> `member.*` 的 `objectId` 存的是 **`memberships.id`**（与接口路径参数一致），不是 `userId`。这样「审计记录里点开的对象」与「当时调用的 URL」能对上；成员被移出后该行被复用（05 的实现），id 不变，历史记录不会指向另一个人的 membership。
+
+#### 7.4.4 查询实现要点
+
+```ts
+// modules/audit/audit.service.ts 追加（列表读是只读查询，与 record 的「永不抛」契约并列但方向不同）
+async list(query: AuditLogQuery): Promise<AuditLogListResult> {
+  // tenantId 只从 AsyncLocalStorage 取：AuditLog **不在** TENANT_SCOPE 白名单，
+  // 扩展不会自动注入 tenant_id，漏写 where 不报错、只是把别租户的数据一起返回。
+  const tenantId = tenantContext.getStore()?.tenantId;
+  if (!tenantId) throw new ForbiddenException({ code: ERROR_CODES.TENANT_MISMATCH, ... });
+
+  const from = query.from ? new Date(query.from) : new Date(Date.now() - 30 * 24 * 3600_000);
+  const to = query.to ? new Date(query.to) : undefined;
+
+  const where = {
+    tenantId,                                  // AC-16 / AC-17：NULL 永不命中
+    ...(query.action && { action: query.action }),
+    ...(query.result && { result: query.result }),
+    ...(query.actorUserId && { actorUserId: query.actorUserId }),
+    createdAt: { gte: from, ...(to && { lte: to }) },   // 闭区间（AC-22）
+  };
+
+  const [rows, total] = await this.prisma.$transaction([
+    this.prisma.auditLog.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],  // tie-break（AC-18）
+      skip: (query.page - 1) * query.pageSize,
+      take: query.pageSize,
+    }),
+    this.prisma.auditLog.count({ where }),
+  ]);
+
+  // 一次 IN 取昵称，不是每行一次（AC-23）。users 也不在白名单，不会被注入 tenantId；
+  // id 集合只来自已按租户过滤的审计行，不存在跨租户泄漏。
+  const actors = await this.prisma.user.findMany({
+    where: { id: { in: [...new Set(rows.map((r) => r.actorUserId))] } },
+    select: { id: true, nickname: true, email: true },
+  });
+  const byId = new Map(actors.map((u) => [u.id, u]));
+
+  return { items: rows.map((row) => toItem(row, byId.get(row.actorUserId))), total, page: query.page, pageSize: query.pageSize };
+}
+```
+
+三个易错点：
+
+1. **`where` 里必须显式 `tenantId`**。`AuditLog` 不在 `TENANT_SCOPE` 白名单（§4.3 已说明原因），扩展不会兜底；漏掉就是跨租户泄漏，且**查询成功、不报错**，只有人工比对才能发现。测试用 AC-16 钉住。
+2. **`count` 与 `findMany` 共用一个 `where`**。两处各写一份，改动时必然漏一处，表现为「翻页翻到第 3 页突然空了，但总数写着 60」。
+3. **排序必须带 `id` 兜底**。审计在同一秒内可能写入多条（一次操作失败后立刻重试），只按 `createdAt` 排序时 PostgreSQL 不保证稳定顺序，翻页会重复。
+
+> **实现期改为 `Promise.all`**（v1.3）：`count` 与 `findMany` 是两个独立只读查询，没有一致性要求，差一两条 `total` 对分页体验无影响；`$transaction([...])` 在 Neon + PgBouncer 事务池下多出往返，换来的强一致快照没人会感知。改后与 `resources.service.list` 同一种写法，仓库里只有一种列表模式。
+
+#### 7.4.5 关键约束
+
+**审计页是只读的，且这一点必须是结构性的**
+- 只提供 `GET`。没有 `DELETE /audit-logs/:id`，也不做「批量清理」入口——可删的审计等于不可信的审计。
+- 前端不加任何写操作按钮，连「标记已读」这类软状态都不引入。将来若要「已归档」标记，属于新功能，单独定方案。
+
+**`tenantId` 的来源只有 `tenantContext`**
+- 不从 query / header 直接读：`X-Tenant-Id` 已在 `TenantGuard` 里校验过 membership，`tenantContext` 存的就是校验通过的租户，直接读 header 会绕过这层。
+- 宁可 403 也不猜：取不到 `tenantId` 说明接口装配错了（误标 `@SkipTenant`），此时返回 `TENANT_MISMATCH`，不做「查全部」的降级。
+
+**筛选参数不参与拼 SQL**
+- 全部走 Prisma 的 `where` 对象，不接受字段名 / 排序字段由前端指定。排序固定为 `createdAt desc, id desc`——允许前端改排序就要做白名单校验，收益只是「按动作排序」，不值。
+
+**对象链接只允许站内路径**
+- 前端把 `objectType='resource'` 映射成 `/app/resources/${objectId}`。**不接受后端返回任意 URL**，与 05 的 `payload.link` 同一条纪律（开放重定向的入口往往就是这么来的）。
+
+**历史数据不回填**
+- v1.2 上线前的记录 `objectType` / `objectId` / `detail.objectName` 都是 null，页面按 AC-27 降级显示。不做回填脚本：`detail.path` 里虽有 id，但路径参数的含义随接口变化（`/members/:id` 是 membershipId、`/resources/:id` 是 resourceId），靠字符串解析回填必然错配，把「没有对象信息」变成「有错误的对象信息」更糟。
+
+#### 7.4.6 操作者角色：写入时快照（v1.3 补充）
+
+**问题**：审计记录的「操作者」只有 `actor_user_id`，看不到身份。而审计最常见的两个追问正是身份相关的——「这条是谁授意做的（owner 还是普通 admin）」和「那个已经被移出团队的人，当初是什么身份」。
+
+**三条路，只能选一条**：
+
+| 方案 | 额外查询 | 角色语义 | 覆盖 `removed` | 结论 |
+|---|---|---|---|---|
+| 前端用 `actorUserId` 回 `GET /members` 推 | 0（复用已有请求） | 现在 | ❌ | 曾短暂采用，放弃 |
+| 查询时按 `actorUserId` 批量查 `memberships` | +1 次 / 每页 | 现在 | ✅ | 次优 |
+| **写入时把 `req.userRole` 抄进 `detail`** | **0** | **操作当时** | ✅ | **采用** |
+
+**为什么「快照」是唯一正确的语义**：审计记录是一张已经拍好的照片，不是一个能往外看的窗口。用 `actorUserId` 现查，得到的是「现在是什么角色」——当事人从 admin 被降成 member 后，他三个月前那条「邀请成员」会显示成「成员」。而审计的用途恰恰是追责，历史一旦跟着现状漂移就不再可信。
+
+**为什么这是免费的**：`TenantGuard` 在请求入口为了做 RBAC 已经查过 `memberships`，并把结果挂在 `req.userRole` 上（`tenant.guard.ts:71`）。拦截器只是读一个内存字段，一次库都不查——比读侧 join 每页还少一次往返。
+
+```ts
+// audit.interceptor.ts 的 snapshot().detail 里
+// 只写值、不写 null：历史记录「没这个键」与「写了 null」在读侧都归一到 null，
+// 但库里能一眼区分出「这条是新版写的」。@SkipTenant 的接口 userRole 恒 undefined，
+// 自然落到不写这个键。
+...(req.userRole ? { actorRole: req.userRole } : {}),
+```
+
+```ts
+// audit.service.ts 的 toItem 里
+// 三个 === 而不是 (ROLES as string[]).includes：顺带完成类型收窄，不需要 as Role
+const pickRole = (v: unknown): Role | null =>
+  v === ROLE.owner || v === ROLE.admin || v === ROLE.member ? v : null;
+
+actorRole: pickRole(detail.actorRole),
+```
+
+**三个必须守住的点**：
+
+1. **不要在查询侧再补一次 `memberships` join**。哪怕是为了「补全历史数据的角色」也不行——那会把「操作当时」悄悄换成「现在」，正好毁掉这个字段存在的理由。历史记录显示空角色，比显示一个错的角色好。
+2. **角色只在 `detail` 里，不在 `audit_logs` 的列里**。新增列要迁移，而 `detail` 是 jsonb，加键零成本；代价是读侧必须窄化（见上），不能 `detail.actorRole as Role`。
+3. **前端不要回退到「用成员列表现查」**。`GET /members` 的 where 排除了 `removed`，恰好漏掉审计最常追查的那批人；页面上那份 `members` 只用来喂操作者下拉的昵称。
+
+**已知代价**：v1.3 之前写入的记录没有这个键，`actorRole` 为 null、不渲染 Tag。与「历史数据不回填」同一处理原则。
+
+### 7.5 测试
+
+#### 7.5.1 单测（Vitest）
+
+| 目标 | 文件 | 用例 |
+|------|------|------|
+| 审计列表 | `src/modules/audit/audit.service.spec.ts`（扩） | `where` 必带 `tenantId`；`tenantId` 缺失 → 403 `TENANT_MISMATCH`；不传 `from` → 默认 30 天前；`action` / `result` / `actorUserId` / `from` / `to` 分别透传；`from > to` 不抛错；`orderBy` 含 `id` 兜底；`count` 与 `findMany` 用同一个 `where`；昵称一次 `IN` 查询（`user.findMany` 只调一次）；用户缺失时 `actorName=null`；`detail` 摊平成 `path` / `statusCode` / `durationMs`，`detail` 为 null 时三者为 null；**`actorRole` 取自 `detail.actorRole`（与 memberships 现值无关）；缺失 / 非法 / 非字符串值一律归 null** |
+| 契约 | `packages/shared`（构建即校验） | `pageSize=101` 失败；`action='member.nope'` 失败且文案「动作取值不合法」；`from=''` 失败；`from='…+08:00'` 通过 |
+| 拦截器 | `src/common/interceptors/audit.interceptor.spec.ts`（扩） | 元数据从字符串改为对象后仍能读到 action；成功时 `objectId` / `objectName` 取自响应体；响应体无 `id` → 两者为 null；失败时 `objectId` 取自 `req.params[objectIdParam]`；未声明 `objectIdParam` 的失败记录不带 objectId（令牌不落库）；未声明 `objectType` 时两列为 null；**成功与失败两条分支都把 `req.userRole` 写进 `detail.actorRole`；无 `userRole` 时整个键不出现** |
+| 前端页面 | `pages/app/audit-log/page.test.tsx`（新增） | 渲染 3 条记录（动作中文 / 昵称 / 结果 Tag）；`result=failed` 显示红色「失败」+ 状态码；`actorName=null` 显示「已注销用户」；对象列三级降级；动作筛选触发请求带 `action` 参数；空结果显示空态文案；**角色 Tag 三档直接来自 `actorRole`（成员列表为空时也能显示）；快照与成员列表现值冲突时以快照为准；`actorRole=null` 不渲染 Tag 且不回退去查成员列表** |
+
+#### 7.5.2 e2e 用例矩阵
+
+| # | 场景 | 期望 |
+|---|------|------|
+| E-47 | owner 打开 `GET /audit-logs`（带 `X-Tenant-Id`） | 200，`items` 每条 `tenantId` 属于该租户 |
+| E-48 | 同一用户用 A 租户 header 查，B 租户有记录 | 返回里不含任何 B 租户记录（AC-16） |
+| E-49 | member 角色请求 | 403 `ROLE_DENIED` |
+| E-50 | 不带 `X-Tenant-Id` | 403 `TENANT_MISMATCH` |
+| E-51 | `pageSize=101` | 422 `VALIDATION_FAILED` |
+| E-52 | `action=member.nope` | 422，文案「动作取值不合法」 |
+| E-53 | 造一条 40 天前的记录 + 一条今天的 | 不传 `from` 时只返回今天那条（默认 30 天） |
+| E-54 | `from` > `to` | 200 + 空数组 |
+| E-55 | 执行一次「移除成员」后查列表 | 最新一条 `action=member.remove`、`objectType=member`、`objectId` 非空、`detail.objectName` 为被移除者昵称 |
+| E-56 | 执行一次失败的「改角色」（对 owner 操作）后查列表 | `result=failed`、`statusCode=403`、`objectId` = 路径里的 membershipId、`objectName=null` |
+| E-57 | `GET /invites/:token` 调用后查审计 | 无新增记录，且任何记录的 `objectId` 都不等于该 token（AC-26） |
+
+#### 7.5.3 手工验证清单
+
+```bash
+# 1 契约包改完先构建（否则后端读旧 dist，`action` 枚举会出现「合法值报 422」）
+pnpm --filter @saas/shared build
+
+# 2 类型 + 单测（拦截器 spec 会因 AUDIT_KEY 形状变化先红，这是预期的信号）
+pnpm --filter @saas/api typecheck && pnpm --filter @saas/api test
+pnpm --filter @saas/web typecheck && pnpm --filter @saas/web test
+
+# 3 造数据：登录拿 token 后做一次「移除成员」，再查审计
+curl -s -X DELETE "$BASE/members/<membershipId>" -H "Authorization: Bearer $TOKEN" -H "X-Tenant-Id: $TID"
+curl -s "$BASE/audit-logs?pageSize=5" -H "Authorization: Bearer $TOKEN" -H "X-Tenant-Id: $TID" | jq '.data.items[0]'
+# 期望：objectType=member、objectId=<membershipId>、objectName=<被移除者昵称>、path=/api/v1/members/...
+```
+
+```sql
+-- 4 对象列从「全 null」变为「有值」：这条 SQL 在改造前后各跑一次，对比结果
+SELECT action, object_type, object_id, detail->>'objectName' AS object_name, created_at
+FROM audit_logs
+WHERE tenant_id = '<tid>'
+ORDER BY created_at DESC
+LIMIT 10;
+-- 改造前：object_type / object_id / object_name 全为 NULL
+-- 改造后：新产生的记录三者都有值
+```
+
+浏览器里走一遍：owner 进「审计日志」→ 默认近 30 天有数据 → 按动作筛「成员 · 移除成员」只剩对应行 → 点「详情」看到 IP / 路径 / 状态码 → 切 member 账号，侧栏无此菜单，直连 `/app/audit-log` 渲染 403 → 用另一租户的 header 查接口，看不到第一个租户的记录。

@@ -39,6 +39,8 @@ describe('AuditInterceptor', () => {
       originalUrl: '/members/m1?token=SECRET',
       ip: '1.2.3.4',
       user: { sub: 'u1' },
+      // 真实请求里这个字段由 TenantGuard 写入（所有带 @Audit 的接口都是租户内的）
+      userRole: 'admin',
       ...overrides,
     };
     return {
@@ -60,14 +62,14 @@ describe('AuditInterceptor', () => {
   });
 
   it('无登录用户（@Public 误标）→ 跳过，不写审计', async () => {
-    getAllAndOverride.mockReturnValue('member.remove');
+    getAllAndOverride.mockReturnValue({ action: 'member.remove' });
     await lastValueFrom(interceptor.intercept(createContext({ user: undefined }), handler()));
     await flush();
     expect(record).not.toHaveBeenCalled();
   });
 
   it('成功 → 记 success，detail 用 path 且不含 query string', async () => {
-    getAllAndOverride.mockReturnValue('member.remove');
+    getAllAndOverride.mockReturnValue({ action: 'member.remove' });
     await lastValueFrom(interceptor.intercept(createContext(), handler()));
     await flush();
 
@@ -87,7 +89,7 @@ describe('AuditInterceptor', () => {
   });
 
   it('抛异常 → 记 failed + statusCode，异常继续向上传播', async () => {
-    getAllAndOverride.mockReturnValue('member.remove');
+    getAllAndOverride.mockReturnValue({ action: 'member.remove' });
     const boom = new NotFoundException('nope');
 
     await expect(
@@ -98,5 +100,37 @@ describe('AuditInterceptor', () => {
     const entry = record.mock.calls[0][0];
     expect(entry.result).toBe('failed');
     expect(entry.detail.statusCode).toBe(404);
+  });
+
+  /**
+   * 角色快照。锁住「角色来自 Token 之外的守卫结果」这件事：
+   * 拦截器读 req.userRole 就够，不需要为了这个字段查任何表。
+   * 成功与失败两条分支都要带上 —— 失败的越权尝试恰恰更需要知道当时是什么身份。
+   */
+  it('成功与失败分支都把 req.userRole 快照进 detail.actorRole', async () => {
+    getAllAndOverride.mockReturnValue({ action: 'member.remove' });
+    await lastValueFrom(interceptor.intercept(createContext(), handler()));
+    await flush();
+    expect(record.mock.calls[0][0].detail.actorRole).toBe('admin');
+
+    record.mockClear();
+    await expect(
+      lastValueFrom(
+        interceptor.intercept(
+          createContext({ userRole: 'member' }),
+          handler(throwError(() => new NotFoundException('nope'))),
+        ),
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await flush();
+    expect(record.mock.calls[0][0].detail.actorRole).toBe('member');
+  });
+
+  it('没有 userRole（@SkipTenant）→ detail 里不写 actorRole 这个键', async () => {
+    getAllAndOverride.mockReturnValue({ action: 'member.remove' });
+    await lastValueFrom(interceptor.intercept(createContext({ userRole: undefined }), handler()));
+    await flush();
+    // 写 null 会让「没这个键」和「写了 null」无法区分，读侧反正都归一到 null
+    expect(record.mock.calls[0][0].detail).not.toHaveProperty('actorRole');
   });
 });

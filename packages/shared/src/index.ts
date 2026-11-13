@@ -25,3 +25,4 @@ export * from './contracts/envelope.js';
 export * from './contracts/member.js';
 export * from './contracts/resource.js';
 export * from './contracts/tenant.js';
+export * from './contracts/audit.js';

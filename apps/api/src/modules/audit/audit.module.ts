@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { AuditService } from './audit.service.ts';
+import { AuditController } from './audit.controller.ts';
 
 /**
  * 审计模块，只提供 AuditService。
@@ -15,6 +16,7 @@ import { AuditService } from './audit.service.ts';
  */
 @Global()
 @Module({
+  controllers: [AuditController],
   providers: [AuditService],
   exports: [AuditService],
 })

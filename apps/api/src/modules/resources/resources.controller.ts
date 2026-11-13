@@ -45,7 +45,7 @@ export class ResourcesController {
   // 写权限收紧到 owner/admin。RolesGuard 读的是 TenantGuard 挂到 request 上的
   // userRole（来自 membership 表），不是 JWT 里的字段——JWT 只有 sub 和 type，
   // 因为一个用户可属多租户，角色是「在本租户内的角色」，必须请求级查询。
-  @Audit(AUDIT_ACTIONS.RESOURCE_CREATE)
+  @Audit(AUDIT_ACTIONS.RESOURCE_CREATE, { objectType: 'resource' })
   // 审计动作 resource.create。拦截器用 tap({ next, error }) 两条分支都留痕：
   // 成功记 result='success'，抛异常记 result='failed'（detail.statusCode 带真实状态码）。
   // 写入是「火忘」的：void 不 await，审计库抖动不影响主请求。
@@ -69,7 +69,7 @@ export class ResourcesController {
   // 用 PATCH 而不是 PUT：PUT 语义是整体替换，未传字段应被清空，
   // 而前端表单是「改哪项传哪项」，用 PUT 会误清 description。
   @Roles('owner', 'admin')
-  @Audit(AUDIT_ACTIONS.RESOURCE_UPDATE)
+  @Audit(AUDIT_ACTIONS.RESOURCE_UPDATE, { objectType: 'resource', objectIdParam: 'id' })
   update(
     @Param('id') id: string,
     // 路径参数不做格式校验：id 是 cuid 字符串，格式错了也只会查不到 → 404，
@@ -103,7 +103,7 @@ export class ResourcesController {
   // 物理删除走 DELETE /api/v1/trash/:id（TrashController），两条路由分工明确：
   // 这里只打时间戳，数据仍可恢复 30 天。
   @Roles('owner', 'admin')
-  @Audit(AUDIT_ACTIONS.RESOURCE_DELETE)
+  @Audit(AUDIT_ACTIONS.RESOURCE_DELETE, { objectType: 'resource', objectIdParam: 'id' })
   remove(@Param('id') id: string, @Req() req: AuthenticatedRequest): Promise<{ id: string }> {
     // 返回值只有 { id }，不回整个资源：删除后前端只需要知道「哪条没了」，
     // 回全量对象会让调用方误以为还能继续用这条数据。

@@ -8,6 +8,7 @@
  */
 import {
   AppstoreOutlined,
+  AuditOutlined,
   DatabaseOutlined,
   DeleteOutlined,
   PayCircleOutlined,
@@ -25,5 +26,6 @@ export const ICONS: Record<IconName, ReactNode> = {
   team: <TeamOutlined />,
   robot: <RobotOutlined />,
   pay: <PayCircleOutlined />,
+  audit: <AuditOutlined />,
   setting: <SettingOutlined />,
 };

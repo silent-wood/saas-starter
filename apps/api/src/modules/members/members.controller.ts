@@ -32,7 +32,7 @@ export class MembersController {
 
   @Patch(':id')
   @Roles('owner', 'admin')
-  @Audit(AUDIT_ACTIONS.MEMBER_ROLE_CHANGE)
+  @Audit(AUDIT_ACTIONS.MEMBER_ROLE_CHANGE, { objectType: 'member', objectIdParam: 'id' })
   updateRole(
     @Param('id') id: string,
     @Body({ schema: updateMemberRoleInputSchema }) body: UpdateMemberRoleInput,
@@ -43,7 +43,7 @@ export class MembersController {
 
   @Post(':id/disable')
   @Roles('owner', 'admin')
-  @Audit(AUDIT_ACTIONS.MEMBER_DISABLE)
+  @Audit(AUDIT_ACTIONS.MEMBER_DISABLE, { objectType: 'member', objectIdParam: 'id' })
   disable(@Param('id') id: string, @Req() req: AuthenticatedRequest): Promise<MemberItem> {
     // 禁用是状态位而非删除：对方仍占席位、数据保留，管理员可随时 enable 回来
     return this.membersService.setStatus(id, 'disabled', actorFrom(req));
@@ -51,14 +51,14 @@ export class MembersController {
 
   @Post(':id/enable')
   @Roles('owner', 'admin')
-  @Audit(AUDIT_ACTIONS.MEMBER_ENABLE)
+  @Audit(AUDIT_ACTIONS.MEMBER_ENABLE, { objectType: 'member', objectIdParam: 'id' })
   enable(@Param('id') id: string, @Req() req: AuthenticatedRequest): Promise<MemberItem> {
     return this.membersService.setStatus(id, 'active', actorFrom(req));
   }
 
   @Delete(':id')
   @Roles('owner', 'admin')
-  @Audit(AUDIT_ACTIONS.MEMBER_REMOVE)
+  @Audit(AUDIT_ACTIONS.MEMBER_REMOVE, { objectType: 'member', objectIdParam: 'id' })
   remove(@Param('id') id: string, @Req() req: AuthenticatedRequest): Promise<{ id: string }> {
     // 不物理删除：memberships 行留着，`joined_at` / `invited_by` 是成员变更的追溯依据
     return this.membersService.remove(id, actorFrom(req));
@@ -67,7 +67,7 @@ export class MembersController {
   @Post(':id/transfer-owner')
   @Roles('owner')
   // 只有 owner 能转让 —— 这是唯一一个比「admin 可管理成员」更紧的操作
-  @Audit(AUDIT_ACTIONS.MEMBER_TRANSFER_OWNER)
+  @Audit(AUDIT_ACTIONS.MEMBER_TRANSFER_OWNER, { objectType: 'member', objectIdParam: 'id' })
   transferOwner(
     @Param('id') id: string,
     @Req() req: AuthenticatedRequest,

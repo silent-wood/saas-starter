@@ -35,7 +35,7 @@ export class InvitesController {
 
   @Post()
   @Roles('owner', 'admin')
-  @Audit(AUDIT_ACTIONS.MEMBER_INVITE)
+  @Audit(AUDIT_ACTIONS.MEMBER_INVITE, { objectType: 'invite' })
   create(
     @Body({ schema: createInviteInputSchema }) body: CreateInviteInput,
     @Req() req: AuthenticatedRequest,
@@ -62,7 +62,7 @@ export class InvitesController {
 
   @Post(':id/resend')
   @Roles('owner', 'admin')
-  @Audit(AUDIT_ACTIONS.MEMBER_INVITE)
+  @Audit(AUDIT_ACTIONS.MEMBER_INVITE, { objectType: 'invite', objectIdParam: 'id' })
   resend(@Param('id') id: string, @Req() req: AuthenticatedRequest): Promise<CreateInviteResult> {
     // 重发会轮换 token：旧链接立即失效，避免「两枚都能用的邀请」同时在外流传
     return this.membersService.resendInvite(id, actorFrom(req));
@@ -70,7 +70,7 @@ export class InvitesController {
 
   @Delete(':id')
   @Roles('owner', 'admin')
-  @Audit(AUDIT_ACTIONS.MEMBER_INVITE)
+  @Audit(AUDIT_ACTIONS.MEMBER_INVITE, { objectType: 'invite', objectIdParam: 'id' })
   revoke(@Param('id') id: string, @Req() req: AuthenticatedRequest): Promise<{ id: string }> {
     return this.membersService.revokeInvite(id, actorFrom(req));
   }
