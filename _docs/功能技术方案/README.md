@@ -127,7 +127,9 @@
 | 04 | 租户创建与切换 | 已确认 | v1.0 | 无新增接口（切换为纯前端行为，复用 GET /tenants；创建进版本池） |
 | 05 | 成员与邀请 | 已实现 | v1.2 | GET /members、POST /invites、DELETE /invites/:id、POST /invites/:id/resend、GET /invites/:token、POST /invites/accept、PATCH /members/:id、POST /members/:id/{disable,enable,transfer-owner}、DELETE /members/:id |
 | 06 | RBAC 与审计 | 已实现 | v1.3 | v1.1 无新增接口（机制层）；v1.2 新增 `GET /audit-logs`（仅 owner/admin，按租户过滤）；v1.3 契约补 `actorRole`（写入时快照） |
-| 07 | 资源 CRUD + 回收站 | 已确认 | v1.1 | GET/POST /resources、GET/PATCH/DELETE /resources/:id、GET /trash、POST /trash/:id/restore、DELETE /trash/:id |
+| 07 | 资源 CRUD + 回收站 | 已确认 | v1.5 | GET/POST /resources、GET/PATCH/DELETE /resources/:id、GET /trash、POST /trash/:id/restore、DELETE /trash/:id |
+| 08 | 异步任务队列 | 已实现 | v1.1 | 无新增接口（机制层）：BullMQ + Redis 队列基建，回收站/令牌/审计到期清理 |
+| 09 | 文件存储 | 已确认 | v1.0 | POST /files/presign、POST /files/:id/confirm、GET /files/:id/download、DELETE /files/:id、POST /resources/:id/attachments、PATCH /auth/me/avatar |
 
 > 编号按《01-注册与登录》§1.3 的规划序列固定，**不等于落地顺序**。06 提前于 04/05 落地，是为了让后面所有业务接口都能直接用上角色判定与审计留痕，避免先写接口再回头补权限。
 >
