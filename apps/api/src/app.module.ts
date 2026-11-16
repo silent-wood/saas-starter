@@ -17,6 +17,7 @@ import { AuditModule } from './modules/audit/audit.module.ts';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor.ts';
 import { RolesGuard } from './common/guards/roles.guard.ts';
 import { MembersModule } from './modules/members/members.module.ts';
+import { QueueModule } from './common/queue/queue.module.ts';
 
 @Module({
   imports: [
@@ -50,6 +51,8 @@ import { MembersModule } from './modules/members/members.module.ts';
     AuditModule,
     ResourcesModule,
     MembersModule,
+    // 异步任务队列（08 方案）：REDIS_URL 缺失时整体降级，不影响启动
+    QueueModule,
   ],
   providers: [
     // 全局守卫注册在这里，而**不是** app.useGlobalGuards(new JwtAuthGuard())：

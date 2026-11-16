@@ -20,9 +20,15 @@ export default () => ({
     .map((s) => s.trim())
     .filter(Boolean),
 
-  // 前端站点根地址。邮件里的验证 / 重置链接以它为前缀，指向前端而非 API；
+  // 邮件里的验证 / 重置链接以它为前缀，指向前端而非 API；
   // 拼出的链接形如 `${appWebUrl}/verify-email?token=xxx`
   appWebUrl: process.env.APP_WEB_URL ?? 'http://localhost:5173',
+
+  // Redis 连接串（Upstash，TCP 协议）。缺省 null = 队列整体降级：
+  // BullMQ 连接与 Worker 都不创建，定时清理任务不执行（08 方案 §4.3-1）
+  redis: {
+    url: process.env.REDIS_URL ?? null,
+  },
 
   jwt: {
     // 签名密钥。env.schema 已保证长度 >= 32，这里的 '' 兜底只为满足类型；
